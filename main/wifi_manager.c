@@ -16,8 +16,9 @@
 #define AP_PASSWORD        CONFIG_ESP_AP_PASSWORD
 #define AP_CHANNEL         6
 #define AP_MAX_CONN        4
-#define AP_BEACON_INTERVAL 100  /* ms, default=100. lower=more visible */
+#define AP_BEACON_INTERVAL 100
 #define MAX_STA_RETRY      CONFIG_ESP_MAXIMUM_RETRY
+#define STA_TIMEOUT_MS     30000
 
 /**
  * @brief 初始化 WiFi 驱动并创建 STA + AP 网络接口
@@ -264,13 +265,18 @@ esp_err_t wifi_manager_start_sta(void)
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                          pdTRUE, pdFALSE, portMAX_DELAY);
+                                          pdTRUE, pdFALSE, pdMS_TO_TICKS(STA_TIMEOUT_MS));
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to '%s'", ssid);
         return ESP_OK;
     }
-    ESP_LOGW(TAG, "failed to connect to '%s'", ssid);
+
+    if (bits & WIFI_FAIL_BIT) {
+        ESP_LOGW(TAG, "failed to connect to '%s' after %d retries", ssid, MAX_STA_RETRY);
+    } else {
+        ESP_LOGW(TAG, "STA connection timed out after %d ms", STA_TIMEOUT_MS);
+    }
     return ESP_FAIL;
 }
 /* ------------------------------------------------------------------ */
@@ -281,7 +287,17 @@ esp_err_t wifi_manager_start_sta(void)
  */
 esp_err_t wifi_manager_stop(void)
 {
-    return esp_wifi_stop();
+    esp_err_t ret = esp_wifi_stop();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_stop() failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    s_retry_num = 0;
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+    ESP_LOGI(TAG, "WiFi stopped and state reset");
+    return ESP_OK;
 }
 /* ------------------------------------------------------------------ */
 /**

@@ -78,8 +78,17 @@ void app_main(void)
     }
 
     /* 启动 AP 模式配置门户 */
-    wifi_manager_start_ap();
-    wifi_config_server_start();
+    ret = wifi_manager_start_ap();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "FATAL: AP mode failed to start (err=0x%x), restarting in 5s...", ret);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+    }
+
+    ret = wifi_config_server_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "FATAL: Config server failed to start (err=0x%x)", ret);
+    }
 
     ESP_LOGI(TAG, "Config portal active - connect to AP '%s' and open 192.168.4.1",
              CONFIG_ESP_AP_SSID);
