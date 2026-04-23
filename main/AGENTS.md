@@ -1,7 +1,6 @@
 # AGENTS.md - main/
 
-Application source. All modules follow the static module pattern with `s_` prefix globals and uppercase `TAG`.
-
+Application source. All modules follow the static module pattern with `s_` prefix globals and uppercase `TAG`. 现支持即席探测功能 `/probe`。
 ## Module Map
 
 | File | Role | Lines | Key exports |
@@ -78,12 +77,9 @@ The system uses `/spiffs/blackbox.json` for configuration:
   ],
   "targets": [
     {
-      "name": "google_http",
+            "name": "httpbin_http",
       "module_name": "http_2xx",
       "target": "httpbin.org",
-      "port": 80,
-      "interval_ms": 30000
-    }
   ],
   "scrape_interval": 30,
   "metrics_port": 9090
@@ -94,7 +90,7 @@ The system uses `/spiffs/blackbox.json` for configuration:
 
 ### Port 9090 (metrics_server)
 - GET /metrics - Prometheus format metrics for all targets
-- GET /probe?target=X&module=Y - Single synchronous probe, returns Prometheus format
+- GET /probe?target=X&module=Y&port=P - Single synchronous probe with optional port, returns Prometheus format
 - GET /config - Current config JSON (modules + targets + global params)
 - POST /reload - Hot reload configuration from SPIFFS
 
@@ -129,10 +125,8 @@ void probe_manager_loop(void) {
 
 Changes to `/spiffs/blackbox.json` are automatically detected and applied without restarting.
 
+- **即席探测支持**: `/probe` 端点支持动态目标配置，无需修改配置文件即可进行网络测试
 - **mbedTLS v4**: No `entropy.h`, no `ctr_drbg.h`, no `mbedtls_ssl_conf_rng()`. TLS uses PSA Crypto internally — just configure `mbedtls_ssl_config` and call `mbedtls_ssl_setup()`.
-- **json component**: v6.0 removed built-in `json`. Project uses local `components/json/` (vendored cJSON). Referenced as `json` in CMakeLists.txt REQUIRES.
-- **probe_tcp.c / probe_ws.c**: TLS sections were migrated from entropy+ctr_drbg pattern to PSA Crypto. Do NOT re-add entropy/ctr_drbg includes.
-
 ## Anti-Patterns (Do NOT)
 
 - Do NOT use `as any`, `@ts-ignore` equivalent suppressions
@@ -151,3 +145,116 @@ Defined in `Kconfig.projbuild` under "ESP32 Blackbox Configuration":
 | `ESP_AP_SSID` | string | `ESP32_Blackbox` | AP config portal SSID |
 | `ESP_AP_PASSWORD` | string | `12345678` | AP config portal password |
 | `ESP_MAXIMUM_RETRY` | int | `5` | STA connection retry limit |
+
+
+## 即席探测使用教程
+
+### 1. 基本用法
+
+**HTTP 探测**:
+```bash
+#VYcurl "http://<设备IP>:9090/probe?target=httpbin.org&module=http_2xx"
+```
+
+**TCP 探测 (指定端口)**:
+```bash
+#WQcurl "http://<设备IP>:9090/probe?target=example.com&module=tcp&port=80"
+```
+
+**DNS 探测**:
+```bash
+#XXcurl "http://<设备IP>:9090/probe?target=8.8.8.8&module=dns"
+```
+
+### 2. 返回结果
+
+**成功示例**:
+```text
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#HNprobe_duration_seconds{target="httpbin.org", module="http_2xx"} 0.234
+
+ HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#HNprobe_success{target="httpbin.org", module="http_2xx"} 1
+```
+
+**失败示例**:
+```text
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#HNprobe_duration_seconds{target="nonexistent.com", module="http_2xx"} 5.234
+
+ HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#HNprobe_success{target="nonexistent.com", module="http_2xx"} 0
+```
+
+### 3. 支持的模块类型
+
+| 模块 | 类型 | 参数 | 说明 |
+|------|------|------|------|
+| `http_2xx` | HTTP | timeout_ms, method, valid_status_codes | HTTP/HTTPS 探测 |
+| `tcp` | TCP | timeout_ms | TCP 连接测试 |
+| `dns` | DNS | timeout_ms | DNS 解析测试 |
+| `icmp_ping` | ICMP | timeout_ms, packets | ICMP Ping 测试 |
+| `ws` | WebSocket | timeout_ms | WebSocket 连接测试 |
+| `wss` | WebSocket Secure | timeout_ms | WebSocket + TLS 连接测试 |
+
+### 4. 实际应用场景
+
+**网络连通性测试**:
+```bash
+#VY# 测试 HTTP 服务可用性
+curl "http://<设备IP>:9090/probe?target=your-service.com&module=http_2xx"
+
+# 测试 TCP 端口连通性
+#TMcurl "http://<设备IP>:9090/probe?target=your-server.com&module=tcp&port=443"
+```
+
+**多目标监控**:
+```bash
+#XX# 同时监控多个服务状态
+curl "http://<设备IP>:9090/probe?target=api.example.com&module=http_2xx"
+
+#STcurl "http://<设备IP>:9090/probe?target=database.example.com&module=tcp&port=5432"
+
+#VYcurl "http://<设备IP>:9090/probe?target=cache.example.com&module=tcp&port=6379"
+```
+
+### 5. 集成到监控系统集成
+
+**Prometheus Blackbox Exporter 配置**:
+```yaml
+scrape_configs:
+  - job_name: 'custom_probes'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - your-service.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: <设备IP>:9090
+```
+
+### 6. 即席探测的优势
+
+✅ **无需配置文件修改**: 直接通过 URL 进行网络测试
+✅ **快速验证**: 立即获得测试结果
+✅ **灵活参数**: 支持任意主机名、IP 和端口
+✅ **标准化输出**: Prometheus 格式，易于集成
+✅ **调试友好**: 实时网络连通性检查
+
+### 7. 使用注意事项
+
+• 探测间隔默认为 5 秒，避免过频繁调用
+• 建议在测试完成后间隔几秒再进行下一次探测
+• TLS 探测会消耗较多资源，注意不要并发过多
+• 超时时间默认为 10 秒，可根据网络环境调整
+• 即席探测主要用于临时测试，长期监控建议使用配置文件

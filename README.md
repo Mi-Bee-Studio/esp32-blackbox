@@ -1,17 +1,17 @@
 # ESP32 Blackbox
 
-基于 ESP32 的网络探测设备，兼容 Prometheus blackbox_exporter 架构，支持 JSON 配置和 Web UI 管理。
-
+基于 ESP32 的网络探测设备，兼容 Prometheus blackbox_exporter 架构，支持 JSON 配置和 Web UI 管理。现支持即席探测功能 `/probe`。
 ## 功能特性
 
 - **零配置启动**: 首次上电自动进入 AP 模式，Web 页面配置 WiFi
 - **配置驱动探测**: JSON + SPIFFS，无需重编译即可修改探测目标
-- **blackbox_exporter 兼容**: /probe 端点，支持 Prometheus 主动抓取
+- **blackbox_exporter 兼容**: /probe 端点，支持 Prometheus 主动抓取和即席探测
 - **ICMP Ping 探测**: 原生 socket 实现
 - **配置热加载**: 运行时修改配置无需重启
 - **Web UI 配置管理**: AP 模式 WiFi 配置 + STA 模式探测管理
 - **多协议探测**: HTTP/HTTPS/TCP/TLS/DNS/ICMP/WebSocket (WS/WSS)
 - **双目标支持**: ESP32-C3 和 ESP32-C6 (WiFi 6)
+- **即席探测**: `/probe` 端点支持动态目标配置和实时网络测试
 
 ## 硬件要求
 
@@ -117,19 +117,8 @@ build_target.bat esp32c3 monitor COM3   # 构建烧录监控
   },
   "targets": [
     {
-      "name": "google_http",
+            "name": "httpbin_http",
       "target": "httpbin.org",
-      "port": 80,
-      "interval": 30,
-      "module": "http_2xx"
-    },
-    {
-      "name": "google_dns",
-      "target": "8.8.8.8",
-      "port": 53,
-      "interval": 30,
-      "module": "icmp_ping"
-    }
   ]
 }
 ```
@@ -139,10 +128,9 @@ build_target.bat esp32c3 monitor COM3   # 构建烧录监控
 ```
 esp32-blackbox/
 ├── main/
-│   ├── main.c                  # 应用入口
 │   ├── wifi_manager.c/h        # WiFi 连接管理 (AP/STA 双模式)
-│   ├── web_server.c/h          # 统一 Web 服务器 (AP 配置 + STA 管理)
-│   ├── web_server.c/h          # STA 模式配置管理 Web 服务器
+│   ├── web_server.c/h          # 统一 Web 服务器 (AP 配置 + STA + 即席探测)
+│   ├── config_manager.c/h      # 配置管理 + NVS 存储 + JSON SPIFFS
 │   ├── config_manager.c/h      # 配置管理 + NVS 存储 + JSON SPIFFS
 │   ├── probe_manager.c/h       # 探测任务调度
 │   ├── probe_types.h           # 探测类型定义
@@ -154,7 +142,6 @@ esp32-blackbox/
 │   ├── metrics_server.c/h      # Prometheus metrics + /probe 端点
 │   ├── CMakeLists.txt          # 组件注册
 │   └── Kconfig.projbuild       # Menuconfig 选项
-├── components/
 │   └── json/                   # 本地 cJSON 组件 (v6.0 兼容)
 │       ├── cJSON.c
 │       ├── cJSON.h
@@ -183,20 +170,19 @@ esp32-blackbox/
 ## Prometheus 集成
 
 设备连接 WiFi 后访问 `http://<设备IP>:9090/metrics` 获取 Prometheus 指标:
-
 ```
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-probe_success{target="google_http",module="http_2xx"} 1
+probe_success{target="httpbin_http",module="http_2xx"} 1
 
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-probe_duration_seconds{target="google_http",module="http_2xx"} 0.234
+probe_duration_seconds{target="httpbin_http",module="http_2xx"} 0.234
 
 # HELP probe_http_status_code HTTP status code
 # TYPE probe_http_status_code gauge
-probe_http_status_code{target="google_http",module="http_2xx"} 200
-```
+probe_http_status_code{target="httpbin_http",module="http_2xx"} 200
+``
 
 ### Prometheus blackbox_exporter Scrape 配置
 
@@ -223,7 +209,7 @@ scrape_configs:
 
 ### 端口 9090 (metrics_server)
 - `GET /metrics` — 所有 target 的 Prometheus 格式指标
-- `GET /probe?target=X&module=Y` — 单次同步探测，返回 Prometheus 格式
+- `GET /probe?target=X&module=Y&port=P` — 单次同步探测（可选端口），返回 Prometheus 格式
 - `GET /config` — 当前 JSON 配置
 - `POST /reload` — 热加载 SPIFFS 配置
 
@@ -242,3 +228,65 @@ scrape_configs:
 ## License
 
 MIT
+
+
+## 即席探测功能
+
+### 概述
+
+ESP32 Blackbox 现支持即席探测功能，通过 `/probe` 端点可以直接进行网络连通性测试，无需修改配置文件。
+
+### 使用方法
+
+**基本语法**:
+```bash
+GET /probe?target=<主机名/IP>&module=<模块名>&port=<端口>
+```
+
+**参数说明**:
+• `target`: 目标主机名或 IP 地址 (必需)
+• `module`: 探测模块名称 (必需)
+• `port`: 目标端口 (可选，默认由模块决定)
+
+**支持模块**:
+| 模块 | 协议 | 说明 |
+------|------|------|
+ `http_2xx` | HTTP/HTTPS | HTTP GET/POST 探测，支持状态码验证 |
+ `tcp` | TCP | TCP 连接测试 |
+ `dns` | DNS | DNS 解析测试 |
+ `icmp_ping` | ICMP | ICMP Ping 测试 |
+ `ws` | WebSocket | WebSocket 连接测试 |
+ `wss` | WebSocket Secure | WebSocket + TLS 连接测试 |
+
+**使用示例**:
+```bash
+#VY# HTTP 探测
+curl "http://<设备IP>:9090/probe?target=httpbin.org&module=http_2xx"
+
+# TCP 探测 (指定端口)
+#TMcurl "http://<设备IP>:9090/probe?target=example.com&module=tcp&port=443"
+
+# DNS 探测
+curl "http://<设备IP>:9090/probe?target=8.8.8.8&module=dns"
+```
+
+### 输出格式
+
+即席探测返回 Prometheus 格式的指标数据：
+```text
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#SRprobe_duration_seconds{target="httpbin.org", module="http_2xx"} 0.234
+
+ HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#HNprobe_success{target="httpbin.org", module="http_2xx"} 1
+```
+
+### 优势特点
+
+✅ **无需配置文件**: 直接通过 URL 进行网络测试
+✅ **快速验证**: 立即获得测试结果
+✅ **灵活参数**: 支持任意主机名、IP 和端口
+✅ **标准化输出**: Prometheus 格式，易于集成
+✅ **调试友好**: 实时网络连通性检查

@@ -1,7 +1,6 @@
 # AGENTS.md - ESP32 Blackbox Project
 
-ESP32 network probing device with AP config portal. Monitors endpoint availability, exposes Prometheus metrics on port 9090.
-
+ESP32 network probing device with AP config portal. Monitors endpoint availability, exposes Prometheus metrics on port 9090. 现支持即席探测功能 `/probe`。
 **Tech Stack**: ESP-IDF v6.0, C (gnu23), FreeRTOS, LWIP, mbedTLS v4 (PSA Crypto)
 **Targets**: ESP32-C3 SuperMini | Seeed Studio XIAO ESP32C6
 **Commit**: `28b4877` | **Branch**: `main`
@@ -100,9 +99,9 @@ esp32-blackbox/
 ├── components/json/               # Vendored cJSON (ESP-IDF v6.0 removed built-in json)
 ├── docs/                          # Architecture, design, usage docs
 ├── CMakeLists.txt                 # Root project config
+├── CMakeLists.txt                 # Root project config
 ├── sdkconfig.defaults             # Common default config (all targets)
 ├── sdkconfig.defaults.esp32c3     # ESP32-C3 specific config (flash, crypto)
-├── sdkconfig.defaults.esp32c6     # ESP32-C6 specific config (flash, crypto, partition)
 ├── partitions.csv                 # Custom partition table (1.875MB app for C6)
 ├── build.py                       # Python build script (cross-target)
 ├── build_target.bat               # Windows batch build script
@@ -237,3 +236,92 @@ void probe_manager_loop(void) {
 - **AP config portal**: SSID `ESP32_Blackbox`, password `12345678`, IP `192.168.4.1`
 - **Multi-target**: Source code is target-agnostic (no GPIO/UART/SPI). All hardware differences handled by sdkconfig defaults
 - **XIAO ESP32C6 Flash**: Some batches have 8MB flash — edit `sdkconfig.defaults.esp32c6` if needed
+
+## 即席探测功能
+
+### 概述
+ESP32 Blackbox 现支持即席探测功能，通过 `/probe` 端点可以直接进行网络连通性测试，无需修改配置文件。
+
+### 使用方法
+
+**基本语法**:
+```bash
+GET /probe?target=<主机名/IP>&module=<模块名>&port=<端口>
+```
+
+**参数说明**:
+• `target`: 目标主机名或 IP 地址 (必需)
+• `module`: 探测模块名称 (必需)
+• `port`: 目标端口 (可选，默认由模块决定)
+
+**支持模块**:
+| 模块 | 协议 | 说明 |
+------|------|------|
+ `http_2xx` | HTTP/HTTPS | HTTP GET/POST 探测，支持状态码验证 |
+ `tcp` | TCP | TCP 连接测试 |
+ `dns` | DNS | DNS 解析测试 |
+ `icmp_ping` | ICMP | ICMP Ping 测试 |
+ `ws` | WebSocket | WebSocket 连接测试 |
+ `wss` | WebSocket Secure | WebSocket + TLS 连接测试 |
+
+**使用示例**:
+```bash
+#VY# HTTP 探测
+curl "http://<设备IP>:9090/probe?target=httpbin.org&module=http_2xx"
+
+# TCP 探测 (指定端口)
+#TMcurl "http://<设备IP>:9090/probe?target=example.com&module=tcp&port=443"
+
+# DNS 探测
+curl "http://<设备IP>:9090/probe?target=8.8.8.8&module=dns"
+```
+
+### 输出格式
+
+即席探测返回 Prometheus 格式的指标数据：
+```text
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#SRprobe_duration_seconds{target="httpbin.org", module="http_2xx"} 0.234
+
+ HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#HNprobe_success{target="httpbin.org", module="http_2xx"} 1
+```
+
+### 集成到 Prometheus
+
+可以通过配置 Prometheus Blackbox Exporter 来使用即席探测功能：
+```yaml
+scrape_configs:
+  - job_name: 'custom_probes'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - your-service.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: <设备IP>:9090
+```
+
+### 优势特点
+
+✅ **无需配置文件**: 直接通过 URL 进行网络测试
+✅ **快速验证**: 立即获得测试结果
+✅ **灵活参数**: 支持任意主机名、IP 和端口
+✅ **标准化输出**: Prometheus 格式，易于集成
+✅ **调试友好**: 实时网络连通性检查
+
+### 使用限制
+
+• 建议探测间隔不少于 5 秒，避免过频繁调用
+• 即席探测主要用于临时测试，长期监控建议使用配置文件
+• TLS 探测会消耗较多资源，注意不要并发过多
+• 超时时间默认为 10 秒，可根据网络环境调整
+• 探测结果仅返回当前状态，不保存历史记录
