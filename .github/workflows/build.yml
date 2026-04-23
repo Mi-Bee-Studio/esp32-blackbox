@@ -30,6 +30,7 @@ jobs:
 
       - name: Set target and build firmware
         run: |
+          . $IDF_PATH/export.sh
           idf.py set-target ${{ matrix.target }}
           idf.py build
 
