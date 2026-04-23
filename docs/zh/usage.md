@@ -1,3 +1,5 @@
+[English](../en/usage.md) | **中文**
+
 # ESP32 Blackbox 使用指南
 
 ## 目录
@@ -253,28 +255,27 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
 
 #### 全局配置字段
 
- 字段 | 类型 | 必需 | 默认值 | 说明 |
-------|------|------|---------|------|
- scrape_interval | number | 否 | 30 | 抓取间隔（秒） |
- metrics_port | number | 否 | 9090 | Metrics 服务器端口 |
+| 字段 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|---------|------|
+| scrape_interval | number | 否 | 30 | 抓取间隔（秒） |
+| metrics_port | number | 否 | 9090 | Metrics 服务器端口 |
 
 #### 模块配置 (modules)
 
 模块配置定义了各种探测协议的具体参数。
 
- 字段 | 类型 | 必需 | 说明 |
-------|------|------|------|
- prober | string | 是 | 模块类型：http, https, tcp, tcp_tls, dns, icmp, ws, wss |
- timeout | number | 否 | 超时时间（秒） |
- http | object | 否 | HTTP 模块特定配置 |
- tcp | object | 否 | TCP 模块特定配置 |
- dns | object | 否 | DNS 模块特定配置 |
- icmp | object | 否 | ICMP 模块特定配置 |
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| prober | string | 是 | 模块类型：http, https, tcp, tcp_tls, dns, icmp, ws, wss |
+| timeout | number | 否 | 超时时间（秒） |
+| http | object | 否 | HTTP 模块特定配置 |
+| tcp | object | 否 | TCP 模块特定配置 |
+| dns | object | 否 | DNS 模块特定配置 |
+| icmp | object | 否 | ICMP 模块特定配置 |
 
 **HTTP 模块配置**:
 
 ```json
-
   "prober": "http",
   "timeout": 10,
   "http": {
@@ -293,7 +294,6 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
 **TCP 模块配置**:
 
 ```json
-
   "prober": "tcp",
   "timeout": 5,
   "tcp": {
@@ -312,7 +312,6 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
 **DNS 模块配置**:
 
 ```json
-
   "prober": "dns",
   "timeout": 5,
   "dns": {
@@ -329,7 +328,6 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
 **ICMP 模块配置**:
 
 ```json
-
   "prober": "icmp",
   "timeout": 5,
   "icmp": {
@@ -350,27 +348,27 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
 目标配置引用模块定义来执行具体的探测任务。
 
 | 字段 | 类型 | 必需 | 说明 |
-------|------|------|------|
- name | string | 是 | 目标名称（用于指标标签） |
- target | string | 是 | 目标主机名或 IP 地址 |
- port | number | 是 | 目标端口 (ICMP 可为 0) |
- module | string | 是 | 引用的模块名称 |
- interval | number | 否 | 探测间隔（秒），不使用则用全局 scrape_interval |
+|------|------|------|------|
+| name | string | 是 | 目标名称（用于指标标签） |
+| target | string | 是 | 目标主机名或 IP 地址 |
+| port | number | 是 | 目标端口 (ICMP 可为 0) |
+| module | string | 是 | 引用的模块名称 |
+| interval | number | 否 | 探测间隔（秒），不使用则用全局 scrape_interval |
 
 #### 模块名称映射
 
 prober 字串对应的模块类型：
 
- prober | 模块类型 | 描述 |
---------|----------|------|
- "http" | MODULE_HTTP | HTTP 明文连接 |
- "https" | MODULE_HTTPS | HTTPS 加密连接 |
- "tcp" | MODULE_TCP | TCP 连接测试 |
- "tcp_tls" | MODULE_TCP_TLS | TLS 加密连接测试 |
- "dns" | MODULE_DNS | DNS 解析测试 |
- "icmp" | MODULE_ICMP | ICMP ping 测试 |
- "ws" | MODULE_WS | WebSocket 连接测试 |
- "wss" | MODULE_WSS | WebSocket Secure 连接测试 |
+| prober | 模块类型 | 描述 |
+|--------|----------|------|
+| "http" | MODULE_HTTP | HTTP 明文连接 |
+| "https" | MODULE_HTTPS | HTTPS 加密连接 |
+| "tcp" | MODULE_TCP | TCP 连接测试 |
+| "tcp_tls" | MODULE_TCP_TLS | TLS 加密连接测试 |
+| "dns" | MODULE_DNS | DNS 解析测试 |
+| "icmp" | MODULE_ICMP | ICMP ping 测试 |
+| "ws" | MODULE_WS | WebSocket 连接测试 |
+| "wss" | MODULE_WSS | WebSocket Secure 连接测试 |
 
 ## Web UI 配置
 
@@ -395,14 +393,14 @@ prober 字串对应的模块类型：
 
 #### 探测状态表格
 
- 列 | 说明 |
-------|------|
- 名称 | 目标配置的名称 |
- 目标 | 探测的目标地址 |
- 端口 | 目标端口 |
- 状态 | 探测结果状态 (OK/FAIL) |
- 耗时 | 探测耗时 |
- 错误 | 错误信息 (如有) |
+| 列 | 说明 |
+|------|------|
+| 名称 | 目标配置的名称 |
+| 目标 | 探测的目标地址 |
+| 端口 | 目标端口 |
+| 状态 | 探测结果状态 (OK/FAIL) |
+| 耗时 | 探测耗时 |
+| 错误 | 错误信息 (如有) |
 
 #### 配置编辑器
 
@@ -459,8 +457,8 @@ curl http://<设备IP>:80/api/config
 #### 更新配置
 
 ```bash
-curl -X POST http://<设备IP>:80/api/config \\
-  -H "Content-Type: application/json" \\
+curl -X POST http://<设备IP>:80/api/config \
+  -H "Content-Type: application/json" \
   -d '{
     "modules": {
       "http_2xx": {
@@ -511,11 +509,11 @@ curl -X POST http://<设备IP>:80/api/reload
 
 #### 参数说明
 
- 参数 | 必需 | 说明 |
-------|------|------|
- target | 是 | 目标主机名或 IP 地址（支持任意主机，无需预配置） |
- module | 是 | 模块名称 |
- port | 否 | 目标端口号，可选。如果为 0 或省略，模块使用默认端口 |
+| 参数 | 必需 | 说明 |
+|------|------|------|
+| target | 是 | 目标主机名或 IP 地址（支持任意主机，无需预配置） |
+| module | 是 | 模块名称 |
+| port | 否 | 目标端口号，可选。如果为 0 或省略，模块使用默认端口 |
 
 #### 新增功能说明
 
@@ -532,32 +530,32 @@ curl -X POST http://<设备IP>:80/api/reload
 **HTTP 探测 (ad-hoc 目标)**:
 ```bash
 # 探测任意 HTTP 服务
-#curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=80"
+curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=80"
 
 # 探测 HTTPS 服务
-#curl "http://192.168.1.100:9090/probe?target=github.com&module=https_2xx&port=443"
+curl "http://192.168.1.100:9090/probe?target=github.com&module=https_2xx&port=443"
 ```
 
 **ICMP 探测 (ad-hoc 目标)**:
 ```bash
 # 探测网关连通性
-#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
+curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
 
 # 探测外部主机
-#curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=icmp_ping"
+curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=icmp_ping"
 ```
 
 **TCP 探测 (ad-hoc 目标)**:
 ```bash
 # 探测端口连通性
-#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=tcp_connect&port=80"
-#curl "http://192.168.1.100:9090/probe?target=smtp.gmail.com&module=tcp_connect&port=587"
+curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=tcp_connect&port=80"
+curl "http://192.168.1.100:9090/probe?target=smtp.gmail.com&module=tcp_connect&port=587"
 ```
 
 **DNS 探测 (ad-hoc 目标)**:
 ```bash
 # 测试 DNS 服务器
-#curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=dns_resolve&port=53"
+curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=dns_resolve&port=53"
 ```
 
 ### Prometheus 抓取配置
@@ -772,15 +770,15 @@ curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=tcp_connect&port
 ```bash
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-#JPprobe_duration_seconds{target="192.168.1.1", module="tcp_connect"} 0.012
+probe_duration_seconds{target="192.168.1.1", module="tcp_connect"} 0.012
 
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-#TMprobe_success{target="192.168.1.1", module="tcp_connect"} 1
+probe_success{target="192.168.1.1", module="tcp_connect"} 1
 
 # HELP probe_status_code Status code or result code
 # TYPE probe_status_code gauge
-#WTprobe_status_code{target="192.168.1.1", module="tcp_connect"} 0
+probe_status_code{target="192.168.1.1", module="tcp_connect"} 0
 ```
 
 **分析**: `probe_success=1` 表示端口可达，`probe_duration_seconds` 显示连接耗时。
@@ -804,15 +802,15 @@ curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=
 ```bash
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-#JPprobe_duration_seconds{target="www.baidu.com", module="http_2xx"} 0.156
+probe_duration_seconds{target="www.baidu.com", module="http_2xx"} 0.156
 
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-#TMprobe_success{target="www.baidu.com", module="http_2xx"} 1
+probe_success{target="www.baidu.com", module="http_2xx"} 1
 
 # HELP probe_status_code Status code or result code
 # TYPE probe_status_code gauge
-#WTprobe_status_code{target="www.baidu.com", module="http_2xx"} 200
+probe_status_code{target="www.baidu.com", module="http_2xx"} 200
 ```
 
 **分析**: `probe_status_code=200` 表示 HTTP 200 OK 响应。
@@ -836,15 +834,15 @@ curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=dns_resolve&port=53"
 ```bash
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-#JPprobe_duration_seconds{target="8.8.8.8", module="dns_resolve"} 0.023
+probe_duration_seconds{target="8.8.8.8", module="dns_resolve"} 0.023
 
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-#TMprobe_success{target="8.8.8.8", module="dns_resolve"} 1
+probe_success{target="8.8.8.8", module="dns_resolve"} 1
 
 # HELP probe_status_code Status code or result code
 # TYPE probe_status_code gauge
-#WTprobe_status_code{target="8.8.8.8", module="dns_resolve"} 0
+probe_status_code{target="8.8.8.8", module="dns_resolve"} 0
 ```
 
 **分析**: `probe_success=1` 表示 DNS 解析成功。
@@ -868,23 +866,23 @@ curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
 ```bash
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-#JPprobe_duration_seconds{target="192.168.1.1", module="icmp_ping"} 0.025
+probe_duration_seconds{target="192.168.1.1", module="icmp_ping"} 0.025
 
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-#TMprobe_success{target="192.168.1.1", module="icmp_ping"} 1
+probe_success{target="192.168.1.1", module="icmp_ping"} 1
 
 # HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
 # TYPE probe_icmp_rtt_ms gauge
-#WTprobe_icmp_rtt_ms{target="192.168.1.1", module="icmp_ping"} 15.2
+probe_icmp_rtt_ms{target="192.168.1.1", module="icmp_ping"} 15.2
 
 # HELP probe_icmp_packets_sent Number of ICMP packets sent
 # TYPE probe_icmp_packets_sent gauge
-#WTprobe_icmp_packets_sent{target="192.168.1.1", module="icmp_ping"} 3
+probe_icmp_packets_sent{target="192.168.1.1", module="icmp_ping"} 3
 
 # HELP probe_icmp_packets_received Number of ICMP packets received
 # TYPE probe_icmp_packets_received gauge
-#WTprobe_icmp_packets_received{target="192.168.1.1", module="icmp_ping"} 3
+probe_icmp_packets_received{target="192.168.1.1", module="icmp_ping"} 3
 ```
 
 **分析**: `probe_icmp_rtt_ms` 显示往返时间毫秒数，`probe_icmp_packets_received` 显示成功接收包数。
@@ -1102,13 +1100,13 @@ groups:
 
 ```bash
 # 临时检查某个服务状态
-#curl "http://192.168.1.100:9090/probe?target=www.example.com&module=http_2xx&port=80"
+curl "http://192.168.1.100:9090/probe?target=www.example.com&module=http_2xx&port=80"
 
 # 故障时快速诊断
-#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
+curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
 
 # 测试新部署的服务
-#curl "http://192.168.1.100:9090/probe?target=new-service.local&module=http_2xx&port=8080"
+curl "http://192.168.1.100:9090/probe?target=new-service.local&module=http_2xx&port=8080"
 ```
 
 **特点**:
@@ -1212,7 +1210,6 @@ http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80
 #### Web UI 配置管理
 
 1. **访问配置管理界面**:
-
 ```
 http://192.168.1.100:/
 ```
@@ -1393,7 +1390,7 @@ cd $IDF_PATH
 1. 确保 ESP-IDF v6.0 安装完整
 2. 目标已设置: `idf.py set-target esp32c6`
 3. 更新子模块: `git submodule update --init --recursive`
-4. 清理并重新编译: `idf.py fullclean && idf.py build
+4. 清理并重新编译: `idf.py fullclean && idf.py build`
 5. 确认 `components/json/` 目录存在 (v6.0 本地 cJSON 组件)
 
 ### TLS 握手失败
@@ -1435,4 +1432,3 @@ CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
 #XWI (xxx) CFG_MGR: JSON 解析完成: X 模块, Y 目标
 #XWI (xxx) CFG_MGR: 配置已热加载: version=Z
 #YM```
-

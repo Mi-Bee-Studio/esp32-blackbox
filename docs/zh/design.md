@@ -1,3 +1,5 @@
+[English](../en/design.md) | **中文**
+
 # ESP32 Blackbox 设计文档
 
 ## 设计目标
@@ -84,34 +86,34 @@
 - **类型分发**: probe_manager 根据模块类型分发到对应实现
 
 **实现示例**:
-``c
+```c
 // 模块定义 - 告诉系统如何探测 HTTP
-PJstatic probe_module_t s_modules[] = {
-NH    {
-PV        .name = "http_2xx",
-JW        .config = {
-YB            .type = MODULE_HTTP,
-QH            .timeout_ms = 10000,
-WJ            .config.http = {
-YV                .method = "GET",
-QJ                .valid_status_codes = {200},
-NQ                .no_follow_redirects = false
-MK            }
-PX        }
-WV    }
-SN};
+static probe_module_t s_modules[] = {
+    {
+        .name = "http_2xx",
+        .config = {
+            .type = MODULE_HTTP,
+            .timeout_ms = 10000,
+            .config.http = {
+                .method = "GET",
+                .valid_status_codes = {200},
+                .no_follow_redirects = false
+            }
+        }
+    }
+};
 
 // 目标定义 - 使用模块
-#RZstatic probe_target_t s_targets[] = {
-YB    {
-HQ        .name = "google_homepage",
-YX        .target = "google.com",
-JX        .port = 80,
-SB        .interval_ms = 30000,
-VW        .module_name = "http_2xx"  // 引用上面的模块配置
-HT    }
-JQ};
-``
+static probe_target_t s_targets[] = {
+    {
+        .name = "google_homepage",
+        .target = "google.com",
+        .port = 80,
+        .interval_ms = 30000,
+        .module_name = "http_2xx"  // 引用上面的模块配置
+    }
+};
+```
 
 ### 2. SPIFFS 配置热加载
 
@@ -126,27 +128,25 @@ JQ};
 - **同步生效**: 版本变化自动触发配置重新加载
 
 **工作流程**:
-``c
+```c
 // 探测任务主循环
-#PKvoid probe_manager_loop(void) {
-TX    // 检查配置版本变化
-BP    if (config_get_version() != s_config_version) {
-QJ        ESP_LOGI(TAG, "Config version changed, reloading...");
-VT        probe_manager_reload_targets();
-JQ        s_config_version = config_get_version();
-NM    }
-XS>
-ZP    // 执行探测
-QH    for (int i = 0; i < target_count; i++) {
-VY        probe_target_t *target = &targets[i];
-JQ        const probe_module_t *module = config_get_module_by_name(target->module_name);
-NV        execute_probe(module, target);
-PJ    }
-JQ>
-KS    // 等待间隔
-ZM    vTaskDelay(pdMS_TO_TICKS(interval_ms));
-SV}
-``
+void probe_manager_loop(void) {
+    // 检查配置版本变化
+    if (config_get_version() != s_config_version) {
+        ESP_LOGI(TAG, "Config version changed, reloading...");
+        probe_manager_reload_targets();
+        s_config_version = config_get_version();
+    }
+    // 执行探测
+    for (int i = 0; i < target_count; i++) {
+        probe_target_t *target = &targets[i];
+        const probe_module_t *module = config_get_module_by_name(target->module_name);
+        execute_probe(module, target);
+    }
+    // 等待间隔
+    vTaskDelay(pdMS_TO_TICKS(interval_ms));
+}
+```
 
 ### 4. 统一 Web 服务器架构
 
@@ -162,15 +162,16 @@ SV}
 **路由逻辑**:
 ```c
 // Web 服务器路由分发
-#WKif (wifi_manager_is_connected()) {
-ST    // STA 模式 - 配置管理和即席探测
-JN    web_server_handle_probe_request();     // /probe 端点
-YM    web_server_start_config_api();        // /api/* 端点
-QJ} else {
-YM    // AP 模式 - WiFi 配置
-PB    wifi_config_server_start();           // /scan, /save 端点
-PB}
+if (wifi_manager_is_connected()) {
+    // STA 模式 - 配置管理和即席探测
+    web_server_handle_probe_request();     // /probe 端点
+    web_server_start_config_api();        // /api/* 端点
+} else {
+    // AP 模式 - WiFi 配置
+    wifi_config_server_start();           // /scan, /save 端点
+}
 ```
+
 ### 5. 原始 ICMP 实现
 
 **设计问题**: ESP-IDF v6.0 如何实现 ICMP ping？
@@ -211,13 +212,13 @@ PB}
 **间隔设置**:
 ```c
 // 最小间隔保护 (防止 watchdog 超时)
-define MIN_PROBE_INTERVAL_MS    5000
+#define MIN_PROBE_INTERVAL_MS    5000
 
 // 自动间隔调整 (如果目标未指定 interval)
-#VYif (target->interval_ms == 0) {
-   target->interval_ms = s_config.scrape_interval_ms;
-
-``
+if (target->interval_ms == 0) {
+    target->interval_ms = s_config.scrape_interval_ms;
+}
+```
 
 ### 错误处理策略
 
@@ -230,37 +231,34 @@ define MIN_PROBE_INTERVAL_MS    5000
 **错误分类处理**:
 ```c
 // 超时错误
-#HTif (result.success == false && strstr(result.error_msg, "timeout")) {
-SN    // 可能是网络问题，下次重试
-VQ}
+if (result.success == false && strstr(result.error_msg, "timeout")) {
+    // 可能是网络问题，下次重试
+}
 
 // 连接错误
-#WWif (result.success == false && strstr(result.error_msg, "connection")) {
-NY    // 可能是服务不可用，标记为失败
-QN}
+if (result.success == false && strstr(result.error_msg, "connection")) {
+    // 可能是服务不可用，标记为失败
+}
 
 // 协议错误
-#PTif (result.success == false && strstr(result.error_msg, "protocol")) {
-VX    // 配置问题，需要检查配置
-XM}
-``
+if (result.success == false && strstr(result.error_msg, "protocol")) {
+    // 配置问题，需要检查配置
+}
+```
 
 ## 安全性设计
 
 ### WiFi 安全
-
 - **AP 模式**: WPA2-PSK 加密，默认密码 `12345678`（局域网使用）
 - **STA 模式**: 用户配置 WPA2/WPA3 加密网络
 - **NVS 存储**: WiFi 凭据加密存储，安全传输
 
 ### 配置文件安全
-
 - **文件权限**: SPIFFS 配置文件仅系统可读写
 - **输入验证**: 严格验证 JSON 格式和数据范围
 - **防止溢出**: 固定大小缓冲区，使用 strncpy/snprintf
 
 ### 网络服务安全
-
 - **AP 模式**: 仅在有客户端连接时运行，完成后自动关闭
 - **STA 模式**: 配置管理仅限局域网访问
 - **输入净化**: 所有用户输入都经过长度和格式检查
@@ -280,67 +278,66 @@ XM}
 **步骤 1**: 更新配置头文件
 ```c
 // config_manager.h
-QYtypedef enum {
-PN    MODULE_HTTP,      // 已有
-YZ    MODULE_TCP,       // 已有
-YK    MODULE_DNS,       // 已有
-VM    MODULE_ICMP,      // 已有
-XS    MODULE_NEW_PROTO, // 新增
-PN} probe_module_type_t;
-``
+typedef enum {
+    MODULE_HTTP,      // 已有
+    MODULE_TCP,       // 已有
+    MODULE_DNS,       // 已有
+    MODULE_ICMP,      // 已有
+    MODULE_NEW_PROTO, // 新增
+} probe_module_type_t;
+```
 
 **步骤 2**: 实现探测函数
 ```c
 // probe_new_proto.c
-#NXprobe_result_t probe_new_proto_execute(const probe_target_t *target,
+probe_result_t probe_new_proto_execute(const probe_target_t *target,
                                       const probe_module_config_t *module_config) {
     // 实现新协议探测逻辑
-QN}
-``
+}
+```
 
 **步骤 3**: 更新模块配置
 ```c
 // config_manager.c
-#VMtypedef struct {
-PV    uint32_t timeout_ms;
-ZY    // 新协议特定配置
-JH    new_proto_config_t new_proto;
- module_config_union_t;
-``
+typedef struct {
+    uint32_t timeout_ms;
+    // 新协议特定配置
+    new_proto_config_t new_proto;
+} module_config_union_t;
+```
 
 **步骤 4**: 注册到配置系统
 ```c
 // config_manager.c - 工厂默认配置
-#NMstatic const probe_module_t s_factory_modules[] = {
-JQ    {
-NM        .name = "new_proto_module",
-KQ        .config = {
-XS            .type = MODULE_NEW_PROTO,
-PX            .timeout_ms = 10000,
-BV            .config.new_proto = {/* 默认配置 */}
-VW        }
-YK    }
-SN};
-``
+static const probe_module_t s_factory_modules[] = {
+    {
+        .name = "new_proto_module",
+        .config = {
+            .type = MODULE_NEW_PROTO,
+            .timeout_ms = 10000,
+            .config.new_proto = {/* 默认配置 */}
+        }
+    }
+};
+```
 
 ### 配置系统扩展
 
 **添加新配置字段**:
 ```json
-
  "modules": {
    "existing_module": {
-HS      "prober": "http",
-QW      "timeout": 10,
-BH      "http": {
-WV        "method": "GET",
-PT        "new_field": "value"  // 新增字段
-MK      }
-SN    }
-VY  },
- "targets": [...]
-JN}
-``
+      "prober": "http",
+      "timeout": 10,
+      "http": {
+        "method": "GET",
+        "new_field": "value"  // 新增字段
+      }
+    }
+  },
+  "targets": [...]
+}
+```
 
 **向后兼容性**:
 - 新字段使用默认值，旧配置仍可正常运行
@@ -358,8 +355,8 @@ JN}
 | probe_status_code | Gauge | target, module | HTTP 状态码或结果码 |
 | probe_tls_handshake_seconds | Gauge | target, module | TLS 握手耗时 (仅适用) |
 | probe_icmp_rtt_ms | Gauge | target, module | ICMP 往返时间 (仅 ICMP) |
- probe_icmp_packets_sent | Gauge | target, module | ICMP 发送包数 (仅 ICMP) |
- probe_icmp_packets_received | Gauge | target, module | ICMP 接收包数 (仅 ICMP) |
+| probe_icmp_packets_sent | Gauge | target, module | ICMP 发送包数 (仅 ICMP) |
+| probe_icmp_packets_received | Gauge | target, module | ICMP 接收包数 (仅 ICMP) |
 
 ### 标签设计原则
 
@@ -374,44 +371,43 @@ JN}
 ```
  HELP probe_duration_seconds Duration of the probe in seconds
  TYPE probe_duration_seconds gauge
-#NXprobe_duration_seconds{target="google_http", module="http_2xx"} 0.234
+probe_duration_seconds{target="google_http", module="http_2xx"} 0.234
 
  HELP probe_success Whether the probe succeeded
  TYPE probe_success gauge
-#VJprobe_success{target="google_http", module="http_2xx"} 1
+probe_success{target="google_http", module="http_2xx"} 1
 
  HELP probe_status_code Status code or result code
  TYPE probe_status_code gauge
-#MKprobe_status_code{target="google_http", module="http_2xx"} 200
-``
+probe_status_code{target="google_http", module="http_2xx"} 200
+```
 
 **ICMP 探测指标**:
 ```
  HELP probe_duration_seconds Duration of the probe in seconds
  TYPE probe_duration_seconds gauge
-#QTprobe_duration_seconds{target="ping_host", module="icmp_ping"} 0.025
+probe_duration_seconds{target="ping_host", module="icmp_ping"} 0.025
 
  HELP probe_success Whether the probe succeeded
  TYPE probe_success gauge
-#HPprobe_success{target="ping_host", module="icmp_ping"} 1
+probe_success{target="ping_host", module="icmp_ping"} 1
 
  HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
  TYPE probe_icmp_rtt_ms gauge
-#VJprobe_icmp_rtt_ms{target="ping_host", module="icmp_ping"} 15.2
+probe_icmp_rtt_ms{target="ping_host", module="icmp_ping"} 15.2
 
  HELP probe_icmp_packets_sent Number of ICMP packets sent
  TYPE probe_icmp_packets_sent gauge
-#NVprobe_icmp_packets_sent{target="ping_host", module="icmp_ping"} 3
+probe_icmp_packets_sent{target="ping_host", module="icmp_ping"} 3
 
  HELP probe_icmp_packets_received Number of ICMP packets received
  TYPE probe_icmp_packets_received gauge
-#NXprobe_icmp_packets_received{target="ping_host", module="icmp_ping"} 3
-``
+probe_icmp_packets_received{target="ping_host", module="icmp_ping"} 3
+```
 
 ## 未来规划
 
 ### 已实现特性
-
 - [x] 模块化探测架构 (modules[] + targets[])
 - [x] SPIFFS JSON 配置系统
 - [x] 配置热加载机制
@@ -421,22 +417,22 @@ JN}
 - [x] /probe 端点实时执行
 
 ### 短期规划 (1-2 个月)
-
 - [ ] 探测结果历史存储和趋势分析
 - [ ] 探测失败智能重试机制
 - [ ] 探测健康评分算法
 - [ ] WebSocket 实时状态推送
 - [ ] 配置文件版本控制和回滚
+- [ ] 探测任务调度优化
+- [ ] 即席探测历史记录
+- [ ] 多目标并行探测
+- [ ] 探测失败智能重试机制
 
 ### 中期规划 (3-6 个月)
-
 - [ ] 多设备集群管理
 - [ ] OTA 固件更新支持
 - [ ] 边缘计算集成
 - [ ] 探测任务调度优化
 - [ ] 即席探测历史记录
-- [ ] 多目标并行探测
-- [ ] 探测失败智能重试机制
 
 ### 即席探测功能 (已实现)
 - [x] 动态即席探测端点 `/probe`

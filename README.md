@@ -1,97 +1,101 @@
 # ESP32 Blackbox
 
-基于 ESP32 的网络探测设备，兼容 Prometheus blackbox_exporter 架构，支持 JSON 配置和 Web UI 管理。现支持即席探测功能 `/probe`。
-## 功能特性
+[English](README.md) | **中文**
 
-- **零配置启动**: 首次上电自动进入 AP 模式，Web 页面配置 WiFi
-- **配置驱动探测**: JSON + SPIFFS，无需重编译即可修改探测目标
-- **blackbox_exporter 兼容**: /probe 端点，支持 Prometheus 主动抓取和即席探测
-- **ICMP Ping 探测**: 原生 socket 实现
-- **配置热加载**: 运行时修改配置无需重启
-- **Web UI 配置管理**: AP 模式 WiFi 配置 + STA 模式探测管理
-- **多协议探测**: HTTP/HTTPS/TCP/TLS/DNS/ICMP/WebSocket (WS/WSS)
-- **双目标支持**: ESP32-C3 和 ESP32-C6 (WiFi 6)
-- **即席探测**: `/probe` 端点支持动态目标配置和实时网络测试
+## Overview
 
-## 硬件要求
+ESP32 Blackbox is a network probing device compatible with Prometheus blackbox_exporter architecture, featuring JSON configuration and Web UI management. Now supports on-demand probing functionality via `/probe` endpoint.
 
-- ESP32-C3 开发板 (如 ESP32-C3 SuperMini)
-- ESP32-C6 开发板 (如 Seeed Studio XIAO ESP32C6)
-- WiFi 网络连接
-- USB 数据线 (烧录用)
+**Key Features**:
+- **Zero-config startup**: Automatically enters AP mode on first boot with WiFi web configuration
+- **Configuration-driven probing**: JSON + SPIFFS for modifying probe targets without recompilation
+- **blackbox_exporter compatible**: `/probe` endpoint supporting Prometheus active scraping and on-demand probing
+- **ICMP Ping probing**: Native socket implementation
+- **Hot configuration reload**: Runtime config modification without restart
+- **Web UI configuration management**: AP mode WiFi setup + STA mode probe management
+- **Multi-protocol probing**: HTTP/HTTPS/TCP/TLS/DNS/ICMP/WebSocket (WS/WSS)
+- **Dual target support**: ESP32-C3 and ESP32-C6 (WiFi 6)
+- **On-demand probing**: `/probe` endpoint supports dynamic target configuration and real-time network testing
 
-## 软件依赖
+## Hardware Requirements
+
+- ESP32-C3 development board (e.g., ESP32-C3 SuperMini)
+- ESP32-C6 development board (e.g., Seeed Studio XIAO ESP32C6)
+- WiFi network connection
+- USB cable (for flashing)
+
+## Software Dependencies
 
 - ESP-IDF **v6.0** (mbedTLS v4 + PSA Crypto)
-- 本地组件: cJSON (`components/json/`)
+- Local component: cJSON (`components/json/`)
 
-## 快速开始
+## Quick Start
 
-### 1. 首次配置 WiFi
+### 1. Initial WiFi Configuration
 
-给设备上电 → 连接 WiFi 热点 `ESP32_Blackbox` (密码: `12345678`) → 浏览器打开 `192.168.4.1` → 扫描 WiFi → 输入密码 → 保存重启
+Power on device → Connect to WiFi hotspot `ESP32_Blackbox` (password: `12345678`) → Open browser to `192.168.4.1` → Scan for WiFi networks → Enter credentials → Save and restart
 
-详细步骤见 [使用指南](docs/usage.md#首次配置-ap-模式)
+Detailed steps see [Usage Guide](docs/en/usage.md#initial-ap-mode-setup)
 
-### 2. 编译和烧录
+### 2. Build and Flash
 
-**方式一：Python 构建脚本（推荐）**
+**Method 1: Python Build Script (Recommended)**
 
 ```bash
-# ESP32-C6 构建
+# ESP32-C6 Build
 python build.py esp32c6 build
 
-# ESP32-C6 构建并烧录
+# ESP32-C6 Build and Flash
 python build.py esp32c6 flash COM3
 
-# ESP32-C3 构建并烧录+监控
+# ESP32-C3 Build and Flash + Monitor
 python build.py esp32c3 monitor COM3
 ```
 
-**方式二：ESP-IDF 命令行（需先运行 export.bat）**
+**Method 2: ESP-IDF Command Line (requires export.bat first)**
 
 ```bash
-# 首次构建 - 设置目标芯片
-idf.py set-target esp32c6        # 或 esp32c3
+# First build - Set target chip
+idf.py set-target esp32c6        # or esp32c3
 
-# 配置（可选）
-idf.py menuconfig                # 配置 AP SSID/password, 重试次数, 自检开关
+# Configuration (optional)
+idf.py menuconfig                # Configure AP SSID/password, retry count, self-test
 
-# 编译
+# Build
 idf.py build
 
-# 烧录
+# Flash
 idf.py -p COM3 flash
 
-# 烧录 + 串口监控
-idf.py -p COM3 flash monitor     # Ctrl+] 退出监控
+# Flash + Serial Monitor
+idf.py -p COM3 flash monitor     # Ctrl+] to exit monitor
 
-# 清理
-idf.py fullclean                  # 清理所有构建产物
+# Clean
+idf.py fullclean                  # Clean all build artifacts
 ```
 
-**方式三：Windows 批处理脚本**
+**Method 3: Windows Batch Script**
 
 ```cmd
-build_target.bat esp32c6 build          # 仅构建
-build_target.bat esp32c6 flash COM3     # 构建并烧录
-build_target.bat esp32c6 clean          # 全量清理后构建
-build_target.bat esp32c3 monitor COM3   # 构建烧录监控
+build_target.bat esp32c6 build          # Build only
+build_target.bat esp32c6 flash COM3     # Build and flash
+build_target.bat esp32c6 clean          # Clean and rebuild
+build_target.bat esp32c3 monitor COM3   # Build, flash and monitor
 ```
 
-### 3. 修改探测目标
+### 3. Modify Probe Targets
 
-支持两种配置方式：
+Supports two configuration methods:
 
-**方法一：Web UI 配置**
+**Method 1: Web UI Configuration**
 
-浏览器打开 `http://<设备IP>/` → 编辑 JSON 配置 → 保存
+Open browser to `http://<deviceIP>/` → Edit JSON configuration → Save
 
-**方法二：JSON 文件配置**
+**Method 2: JSON File Configuration**
 
-编辑 `/spiffs/blackbox.json` 配置文件（可通过 Web UI 或 API 访问）
+Edit `/spiffs/blackbox.json` configuration file (accessible via Web UI or API)
 
-配置文件格式：
+Configuration file format:
 
 ```json
 {
@@ -117,59 +121,67 @@ build_target.bat esp32c3 monitor COM3   # 构建烧录监控
   },
   "targets": [
     {
-            "name": "httpbin_http",
-      "target": "httpbin.org",
+      "name": "httpbin_http",
+      "target": "httpbin.org"
+    }
   ]
 }
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 esp32-blackbox/
 ├── main/
-│   ├── wifi_manager.c/h        # WiFi 连接管理 (AP/STA 双模式)
-│   ├── web_server.c/h          # 统一 Web 服务器 (AP 配置 + STA + 即席探测)
-│   ├── config_manager.c/h      # 配置管理 + NVS 存储 + JSON SPIFFS
-│   ├── config_manager.c/h      # 配置管理 + NVS 存储 + JSON SPIFFS
-│   ├── probe_manager.c/h       # 探测任务调度
-│   ├── probe_types.h           # 探测类型定义
-│   ├── probe_http.c            # HTTP/HTTPS 探测
-│   ├── probe_tcp.c             # TCP/TCP+TLS 探测
-│   ├── probe_dns.c             # DNS 探测
-│   ├── probe_icmp.c            # ICMP Ping 探测
-│   ├── probe_ws.c              # WebSocket/WSS 探测
-│   ├── metrics_server.c/h      # Prometheus metrics + /probe 端点
-│   ├── CMakeLists.txt          # 组件注册
-│   └── Kconfig.projbuild       # Menuconfig 选项
-│   └── json/                   # 本地 cJSON 组件 (v6.0 兼容)
+│   ├── wifi_manager.c/h        # WiFi connection management (AP/STA dual mode)
+│   ├── web_server.c/h          # Unified web server (AP config + STA + on-demand probing)
+│   ├── config_manager.c/h      # Configuration management + NVS storage + JSON SPIFFS
+│   ├── probe_manager.c/h       # Probe task scheduling
+│   ├── probe_types.h           # Probe type definitions
+│   ├── probe_http.c            # HTTP/HTTPS probing
+│   ├── probe_tcp.c             # TCP/TCP+TLS probing
+│   ├── probe_dns.c             # DNS probing
+│   ├── probe_icmp.c            # ICMP Ping probing
+│   ├── probe_ws.c              # WebSocket/WSS probing
+│   ├── metrics_server.c/h      # Prometheus metrics + /probe endpoint
+│   ├── CMakeLists.txt          # Component registration
+│   └── Kconfig.projbuild       # Menuconfig options
+│   └── json/                   # Local cJSON component (v6.0 compatibility)
 │       ├── cJSON.c
 │       ├── cJSON.h
 │       └── CMakeLists.txt
-├── docs/                       # 文档目录
-│   ├── architecture.md         # 架构设计
-│   ├── design.md               # 设计文档
-│   └── usage.md                # 使用指南
-├── CMakeLists.txt              # 根项目配置
-├── sdkconfig.defaults          # 默认配置
-├── sdkconfig.defaults.esp32c3  # ESP32-C3 配置
-├── sdkconfig.defaults.esp32c6  # ESP32-C6 配置
-├── partitions.csv              # 自定义分区表 (含 SPIFFS)
-├── build.py                    # Python 构建脚本 (推荐)
-└── build_target.bat            # Windows 批处理构建脚本
+├── docs/                       # Documentation directory
+│   ├── zh/                    # Chinese documentation
+│   │   ├── architecture.md    # Architecture design
+│   │   ├── design.md         # Design documentation
+│   │   └── usage.md          # Usage guide
+│   └── en/                    # English documentation
+│       ├── architecture.md    # Architecture
+│       ├── design.md         # Design
+│       └── usage.md          # Usage
+├── CMakeLists.txt              # Root project configuration
+├── sdkconfig.defaults          # Default configuration
+├── sdkconfig.defaults.esp32c3  # ESP32-C3 configuration
+├── sdkconfig.defaults.esp32c6  # ESP32-C6 configuration
+├── partitions.csv              # Custom partition table (with SPIFFS)
+├── build.py                    # Python build script (recommended)
+├── build_target.bat            # Windows batch build script
+├── README.md                   # English README
+├── README_CN.md                # Chinese README
+└── AGENTS.md                   # Project documentation
 ```
 
-## 文档
+## Documentation
 
-更多文档请查看 [docs/](docs/) 目录:
+For more documentation, see the [docs/](docs/) directory:
 
-- [架构设计](docs/architecture.md) — 模块划分、启动流程、线程模型
-- [设计文档](docs/design.md) — 设计决策、性能考量、安全性
-- [使用指南](docs/usage.md) — 环境准备、配置、烧录、故障排除
+- [Architecture](docs/en/architecture.md) — Module division, startup flow, thread model
+- [Design](docs/en/design.md) — Design decisions, performance considerations, security
+- [Usage Guide](docs/en/usage.md) — Environment setup, configuration, flashing, troubleshooting
 
-## Prometheus 集成
+## Prometheus Integration
 
-设备连接 WiFi 后访问 `http://<设备IP>:9090/metrics` 获取 Prometheus 指标:
+After the device connects to WiFi, access `http://<deviceIP>:9090/metrics` to get Prometheus metrics:
 ```
 # HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
@@ -182,9 +194,9 @@ probe_duration_seconds{target="httpbin_http",module="http_2xx"} 0.234
 # HELP probe_http_status_code HTTP status code
 # TYPE probe_http_status_code gauge
 probe_http_status_code{target="httpbin_http",module="http_2xx"} 200
-``
+```
 
-### Prometheus blackbox_exporter Scrape 配置
+### Prometheus blackbox_exporter Scrape Configuration
 
 ```yaml
 scrape_configs:
@@ -205,88 +217,87 @@ scrape_configs:
       - targets: ['192.168.1.100:9090']
 ```
 
-## HTTP 端点
+## HTTP Endpoints
 
-### 端口 9090 (metrics_server)
-- `GET /metrics` — 所有 target 的 Prometheus 格式指标
-- `GET /probe?target=X&module=Y&port=P` — 单次同步探测（可选端口），返回 Prometheus 格式
-- `GET /config` — 当前 JSON 配置
-- `POST /reload` — 热加载 SPIFFS 配置
+### Port 9090 (metrics_server)
+- `GET /metrics` — Prometheus format metrics for all targets
+- `GET /probe?target=X&module=Y&port=P` — Single synchronous probe (optional port), returns Prometheus format
+- `GET /config` — Current JSON configuration
+- `POST /reload` — Hot load SPIFFS configuration
 
-### 端口 80 (web_server)
-**AP 模式:**
-- `GET /` — WiFi 配置页面
-- `GET /scan` — WiFi 扫描结果 JSON
-- `POST /save` — 保存 WiFi 凭据到 NVS
+### Port 80 (web_server)
+**AP Mode:**
+- `GET /` — WiFi configuration page
+- `GET /scan` — WiFi scan results JSON
+- `POST /save` — Save WiFi credentials to NVS
 
-**STA 模式:**
-- `GET /` — 配置管理仪表板
-- `GET /api/status` — 设备状态 JSON
-- `POST /api/config` — 更新配置 JSON
-- `POST /api/reload` — 热加载配置
+**STA Mode:**
+- `GET /` — Configuration management dashboard
+- `GET /api/status` — Device status JSON
+- `POST /api/config` — Update configuration JSON
+- `POST /api/reload` — Hot load configuration
 
 ## License
 
 MIT
 
+## On-Demand Probing Feature
 
-## 即席探测功能
+### Overview
 
-### 概述
+ESP32 Blackbox now supports on-demand probing functionality, allowing direct network connectivity testing through the `/probe` endpoint without modifying configuration files.
 
-ESP32 Blackbox 现支持即席探测功能，通过 `/probe` 端点可以直接进行网络连通性测试，无需修改配置文件。
+### Usage
 
-### 使用方法
-
-**基本语法**:
+**Basic syntax**:
 ```bash
-GET /probe?target=<主机名/IP>&module=<模块名>&port=<端口>
+GET /probe?target=<hostname/IP>&module=<module_name>&port=<port>
 ```
 
-**参数说明**:
-• `target`: 目标主机名或 IP 地址 (必需)
-• `module`: 探测模块名称 (必需)
-• `port`: 目标端口 (可选，默认由模块决定)
+**Parameter description**:
+• `target`: Target hostname or IP address (required)
+• `module`: Probe module name (required)
+• `port`: Target port (optional, determined by module by default)
 
-**支持模块**:
-| 模块 | 协议 | 说明 |
-------|------|------|
- `http_2xx` | HTTP/HTTPS | HTTP GET/POST 探测，支持状态码验证 |
- `tcp` | TCP | TCP 连接测试 |
- `dns` | DNS | DNS 解析测试 |
- `icmp_ping` | ICMP | ICMP Ping 测试 |
- `ws` | WebSocket | WebSocket 连接测试 |
- `wss` | WebSocket Secure | WebSocket + TLS 连接测试 |
+**Supported modules**:
+| Module | Protocol | Description |
+--------|----------|-------------|
+ `http_2xx` | HTTP/HTTPS | HTTP GET/POST probing with status code validation |
+ `tcp` | TCP | TCP connection test |
+ `dns` | DNS | DNS resolution test |
+ `icmp_ping` | ICMP | ICMP Ping test |
+ `ws` | WebSocket | WebSocket connection test |
+ `wss` | WebSocket Secure | WebSocket + TLS connection test |
 
-**使用示例**:
+**Usage examples**:
 ```bash
-#VY# HTTP 探测
-curl "http://<设备IP>:9090/probe?target=httpbin.org&module=http_2xx"
+# HTTP probe
+curl "http://<deviceIP>:9090/probe?target=httpbin.org&module=http_2xx"
 
-# TCP 探测 (指定端口)
-#TMcurl "http://<设备IP>:9090/probe?target=example.com&module=tcp&port=443"
+# TCP probe (specify port)
+curl "http://<deviceIP>:9090/probe?target=example.com&module=tcp&port=443"
 
-# DNS 探测
-curl "http://<设备IP>:9090/probe?target=8.8.8.8&module=dns"
+# DNS probe
+curl "http://<deviceIP>:9090/probe?target=8.8.8.8&module=dns"
 ```
 
-### 输出格式
+### Output Format
 
-即席探测返回 Prometheus 格式的指标数据：
-```text
+On-demand probing returns Prometheus format metrics:
+```
 # HELP probe_duration_seconds Duration of the probe in seconds
 # TYPE probe_duration_seconds gauge
-#SRprobe_duration_seconds{target="httpbin.org", module="http_2xx"} 0.234
+probe_duration_seconds{target="httpbin.org", module="http_2xx"} 0.234
 
- HELP probe_success Whether the probe succeeded
+# HELP probe_success Whether the probe succeeded
 # TYPE probe_success gauge
-#HNprobe_success{target="httpbin.org", module="http_2xx"} 1
+probe_success{target="httpbin.org", module="http_2xx"} 1
 ```
 
-### 优势特点
+### Advantages
 
-✅ **无需配置文件**: 直接通过 URL 进行网络测试
-✅ **快速验证**: 立即获得测试结果
-✅ **灵活参数**: 支持任意主机名、IP 和端口
-✅ **标准化输出**: Prometheus 格式，易于集成
-✅ **调试友好**: 实时网络连通性检查
+✅ **No configuration files required**: Direct network testing via URL
+✅ **Fast verification**: Immediate test results
+✅ **Flexible parameters**: Support for any hostname, IP and port
+✅ **Standardized output**: Prometheus format, easy integration
+✅ **Debug-friendly**: Real-time network connectivity checking

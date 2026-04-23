@@ -97,7 +97,15 @@ ESP-IDF 会自动加载对应的 `sdkconfig.defaults.<target>` 文件。
 esp32-blackbox/
 ├── main/                          # Application source (see main/AGENTS.md)
 ├── components/json/               # Vendored cJSON (ESP-IDF v6.0 removed built-in json)
-├── docs/                          # Architecture, design, usage docs
+├── docs/                          # Documentation directory
+│   ├── zh/                        # Chinese documentation
+│   │   ├── architecture.md        # 架构设计
+│   │   ├── design.md              # 详细设计
+│   │   └── usage.md               # 使用教程
+│   └── en/                        # English documentation
+│       ├── architecture.md        # Architecture
+│       ├── design.md              # Design
+│       └── usage.md               # Usage Guide
 ├── CMakeLists.txt                 # Root project config
 ├── CMakeLists.txt                 # Root project config
 ├── sdkconfig.defaults             # Common default config (all targets)
