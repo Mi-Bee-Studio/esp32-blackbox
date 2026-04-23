@@ -116,10 +116,8 @@ ESP-IDF 会自动加载对应的 `sdkconfig.defaults.<target>` 文件。
 ```
 esp32-blackbox/
 ├── main/                          # Application source (see main/AGENTS.md)
-│   ├── status_led.c              # LED 状态指示模块（C3 闪烁 + C6 RGB 颜色）
+│   ├── status_led.c              # LED 状态指示模块（C3/C6 GPIO 控制）
 │   ├── status_led.h              # LED 状态 API 和状态枚举
-│   ├── led_strip_encoder.c       # WS2812 RMT 编码器（仅 C6）
-│   ├── led_strip_encoder.h       # RMT 编码器头文件
 ├── components/json/               # Vendored cJSON (ESP-IDF v6.0 removed built-in json)
 ├── docs/                          # Documentation directory
 │   ├── zh/                        # Chinese documentation
@@ -247,23 +245,23 @@ void probe_manager_loop(void) {
 
 ### LED Status Indicator Pattern
 - State enum `status_led_state_t` with 8 states
-- `status_led_init()` initializes GPIO (C3) or RMT+WS2812 (C6), creates LED task, registers WiFi/IP event handlers
-- LED task runs in a loop reading current state and driving blink/color patterns
+- `status_led_init()` initializes GPIO, creates LED task, registers WiFi/IP event handlers
+- LED task runs in a loop reading current state and driving blink patterns
 - Kconfig `CONFIG_ESP_STATUS_LED` with inline stubs when disabled
 - Module registers its OWN event handlers (does not modify wifi_manager.h)
-- Static allocation only: `s_pixel_buf[3]` for WS2812, no malloc in LED hot paths
+- Static allocation only, no malloc in LED hot paths
 
 #### LED State Table
-| State | C3 Pattern | C6 Color + Pattern |
-|-------|-----------|-------------------|
-| INIT | Fast blink 100ms | Blue fast blink 100ms |
-| AP_MODE | Slow blink 500ms | Yellow slow blink 500ms |
-| STA_CONNECTING | Medium blink 200ms | Blue medium blink 200ms |
-| CONNECTED | Solid ON | Green solid |
-| DISCONNECTED | Fast blink 100ms | Red fast blink 100ms |
-| CONNECTION_FAILED | 3x blink + 1s pause | Red 3x blink + 1s pause |
-| SELF_TEST | (same as INIT) | Purple fast blink 100ms |
-| CONFIG_RELOAD | 2x blink | Yellow 2x blink |
+| State | Pattern |
+|-------|---------|
+| INIT | Fast blink 100ms |
+| AP_MODE | Slow blink 500ms |
+| STA_CONNECTING | Medium blink 200ms |
+| CONNECTED | Solid ON |
+| DISCONNECTED | Fast blink 100ms |
+| CONNECTION_FAILED | 3x blink + 1s pause |
+| SELF_TEST | Fast blink 100ms |
+| CONFIG_RELOAD | 2x blink |
 
 ## Configuration
 | Method | What | Where |

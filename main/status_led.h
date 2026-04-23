@@ -9,7 +9,7 @@
  * @brief 表示 LED 当前显示的状态
  */
 typedef enum {
-    STATUS_LED_INIT,           /* 初始化中 */
+    STATUS_LED_INIT,            /* 初始化中 */
     STATUS_LED_AP_MODE,         /* AP 模式 */
     STATUS_LED_STA_CONNECTING,  /* STA 连接中 */
     STATUS_LED_CONNECTED,       /* 已连接 (正常状态) */

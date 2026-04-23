@@ -22,10 +22,8 @@ Application source. All modules follow the static module pattern with `s_` prefi
 | `web_server.h` | Web server API | ~10 | — |
 | `metrics_server.c` | Prometheus HTTP server (esp_http_server), /metrics, /probe, /config, /reload | ~341 | `metrics_server_start()` |
 | `metrics_server.h` | Metrics server API | ~10 | — |
-| `status_led.c` | LED 状态指示：板载 LED 显示设备状态 | ~401 | `status_led_init()`, `status_led_set_state()` |
+| `status_led.c` | LED 状态指示：板载 LED 显示设备状态 | ~251 | `status_led_init()`, `status_led_set_state()` |
 | `status_led.h` | LED 状态 API 和枚举 | ~57 | `status_led_state_t` |
-| `led_strip_encoder.c` | WS2812 RMT 编码器（仅 C6） | ~191 | `led_strip_encoder_new()` |
-| `led_strip_encoder.h` | RMT 编码器头文件 | ~42 | `led_strip_encoder_t` |
 
 ## Dependency Graph
 
@@ -42,7 +40,7 @@ main.c
   │       ├─→ probe_icmp ──→ lwip/raw
   │       └─→ probe_ws ──→ lwip/sockets, mbedtls (ssl, net_sockets)
   └─→ metrics_server ──→ esp_http_server, probe_manager, config_manager
-  └─→ status_led ──→ driver/gpio (C3), driver/rmt_tx + led_strip_encoder (C6), esp_event
+  └─→ status_led ──→ driver/gpio, esp_event
 ```
 
 ## Startup Flow
