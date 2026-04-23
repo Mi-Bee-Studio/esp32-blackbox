@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "config_manager.h"
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
@@ -29,6 +30,7 @@
 static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "WIFI";
 static int s_retry_num = 0;
+static bool s_sta_connecting = false;
 
 /* ------------------------------------------------------------------ */
 /**
@@ -47,25 +49,31 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 {
     ESP_LOGD(TAG, "event: base=%s id=%ld", event_base, event_id);
 
-    /* STA 事件处理 */
+    /* STA 事件处理 - 仅在 STA 连接阶段响应 */
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();  // 启动 STA 连接
+        if (s_sta_connecting) {
+            esp_wifi_connect();
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)event_data;
-        ESP_LOGW(TAG, "STA disconnected - reason=%d, rssi=%d", d->reason, d->rssi);
-        if (s_retry_num < MAX_STA_RETRY) {
-            esp_wifi_connect();  // 尝试重新连接
-            s_retry_num++;
-            ESP_LOGI(TAG, "retry to connect (%d/%d)", s_retry_num, MAX_STA_RETRY);
-        } else {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);  // 标记连接失败
-            ESP_LOGW(TAG, "STA connect failed after %d retries", MAX_STA_RETRY);
+        if (s_sta_connecting) {
+            wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)event_data;
+            ESP_LOGW(TAG, "STA disconnected - reason=%d, rssi=%d", d->reason, d->rssi);
+            if (s_retry_num < MAX_STA_RETRY) {
+                esp_wifi_connect();
+                s_retry_num++;
+                ESP_LOGI(TAG, "retry to connect (%d/%d)", s_retry_num, MAX_STA_RETRY);
+            } else {
+                xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+                ESP_LOGW(TAG, "STA connect failed after %d retries", MAX_STA_RETRY);
+            }
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
-        s_retry_num = 0;  // 重置重试计数器
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);  // 标记连接成功
+        if (s_sta_connecting) {
+            ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+            ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
+            s_retry_num = 0;
+            xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        }
     }
     /* AP 事件处理 */
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_START) {
@@ -114,10 +122,15 @@ static void dump_ap_status(void)
     esp_wifi_ap_get_sta_list(&sta_list);
     ESP_LOGI(TAG, "[DEBUG] Connected stations: %d", sta_list.num);
 
-    /* 打印 AP BSSID */
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     ESP_LOGI(TAG, "[DEBUG] AP BSSID: " MACSTR, MAC2STR(mac));
+
+    wifi_country_t country_read = {0};
+    esp_wifi_get_country(&country_read);
+    ESP_LOGI(TAG, "[DEBUG] Country: cc=%.3s schan=%d nchan=%d max_tx=%d policy=%d",
+             country_read.cc, country_read.schan, country_read.nchan,
+             country_read.max_tx_power, country_read.policy);
 }
 /* ------------------------------------------------------------------ */
 /**
@@ -130,12 +143,21 @@ esp_err_t wifi_manager_init(void)
 {
     s_wifi_event_group = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_netif_init());  // 初始化网络接口
-    esp_netif_create_default_wifi_sta();  // 创建默认的 STA 网络接口
-    esp_netif_create_default_wifi_ap();  // 创建默认的 AP 网络接口
+    esp_err_t ret = esp_netif_init();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "esp_netif_init() failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));  // 初始化 WiFi 模块
+    ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "esp_wifi_init() failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     /* 设置 WiFi 国家码为中国 (CN)，信道 1-13 可用 */
     wifi_country_t country = {
@@ -219,7 +241,7 @@ esp_err_t wifi_manager_start_ap(void)
     /* 每 10 秒打印 AP 状态 */
     wifi_mode_t cur_mode;
     esp_wifi_get_mode(&cur_mode);
-    if (cur_mode == WIFI_MODE_AP) {
+    if (cur_mode == WIFI_MODE_AP || cur_mode == WIFI_MODE_APSTA) {
         xTaskCreate(ap_debug_task, "ap_debug", 2048, NULL, 1, NULL);
     }
 
@@ -236,6 +258,7 @@ esp_err_t wifi_manager_start_ap(void)
 esp_err_t wifi_manager_start_sta(void)
 {
     s_retry_num = 0;
+    s_sta_connecting = true;
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
     char ssid[64] = {0};
@@ -269,6 +292,7 @@ esp_err_t wifi_manager_start_sta(void)
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to '%s'", ssid);
+        s_sta_connecting = false;
         return ESP_OK;
     }
 
@@ -287,6 +311,8 @@ esp_err_t wifi_manager_start_sta(void)
  */
 esp_err_t wifi_manager_stop(void)
 {
+    s_sta_connecting = false;
+
     esp_err_t ret = esp_wifi_stop();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_wifi_stop() failed: %s", esp_err_to_name(ret));
