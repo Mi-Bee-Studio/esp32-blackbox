@@ -1,4 +1,4 @@
-﻿# ESP32 Blackbox 使用指南
+# ESP32 Blackbox 使用指南
 
 ## 目录
 
@@ -223,22 +223,22 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
   },
   "targets": [
     {
-      "name": "google_http",
-      "target": "google.com",
+      "name": "httpbin_test",
+      "target": "httpbin.org",
       "port": 80,
       "module": "http_2xx",
       "interval": 30
     },
     {
-      "name": "google_dns",
+      "name": "dns_server",
       "target": "8.8.8.8",
       "port": 53,
       "module": "dns_resolve",
       "interval": 30
     },
     {
-      "name": "ping_host",
-      "target": "example.com",
+      "name": "gateway_ping",
+      "target": "192.168.1.1",
       "port": 0,
       "module": "icmp_ping",
       "interval": 60
@@ -316,7 +316,7 @@ ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件
   "prober": "dns",
   "timeout": 5,
   "dns": {
-    "query_name": "dns.google",
+    "query_name": "httpbin.org",
     "query_type": 1
   }
 }
@@ -429,15 +429,15 @@ curl http://<设备IP>:80/api/status
   "metrics_port": 9090,
   "results": [
     {
-      "name": "google_http",
-      "target": "google.com",
+      "name": "httpbin_test",
+      "target": "httpbin.org",
       "port": 80,
       "success": true,
       "duration_ms": 234,
       "error": ""
     },
     {
-      "name": "google_dns",
+      "name": "dns_server",
       "target": "8.8.8.8",
       "port": 53,
       "success": false,
@@ -505,54 +505,59 @@ curl -X POST http://<设备IP>:80/api/reload
 #### 使用方法
 
 ```bash
-#curl "http://<设备IP>:9090/probe?target=<目标名称>&module=<模块名称>"
+#curl "http://<设备IP>:9090/probe?target=<主机名或IP>&module=<模块名称>"
+#curl "http://<设备IP>:9090/probe?target=<主机名或IP>&module=<模块名称>&port=<端口号>"
 ```
 
 #### 参数说明
 
  参数 | 必需 | 说明 |
 ------|------|------|
- target | 是 | 目标配置的名称 |
+ target | 是 | 目标主机名或 IP 地址（支持任意主机，无需预配置） |
  module | 是 | 模块名称 |
+ port | 否 | 目标端口号，可选。如果为 0 或省略，模块使用默认端口 |
+
+#### 新增功能说明
+
+**重要更新**: `/probe` 端点现在支持**任意主机名和 IP 地址**的 ad-hoc 探测，不再局限于预配置的目标名称。这是与 Prometheus blackbox_exporter 兼容的重要改进。
+
+**端口参数**: 新增可选的 `port` 参数，支持指定目标端口。如果不指定，各模块使用默认端口：
+- HTTP/HTTPS: 80/443
+- TCP: 根据模块配置
+- DNS: 53  
+- ICMP: 0（不使用端口）
 
 #### 使用示例
 
-**HTTP 探测**:
+**HTTP 探测 (ad-hoc 目标)**:
 ```bash
-#curl "http://192.168.1.100:9090/probe?target=google_http&module=http_2xx"
+# 探测任意 HTTP 服务
+#curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=80"
+
+# 探测 HTTPS 服务
+#curl "http://192.168.1.100:9090/probe?target=github.com&module=https_2xx&port=443"
 ```
 
-**ICMP 探测**:
+**ICMP 探测 (ad-hoc 目标)**:
 ```bash
-#curl "http://192.168.1.100:9090/probe?target=ping_host&module=icmp_ping"
+# 探测网关连通性
+#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
+
+# 探测外部主机
+#curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=icmp_ping"
 ```
 
-#### 响应格式
-
+**TCP 探测 (ad-hoc 目标)**:
 ```bash
-# HELP probe_duration_seconds Duration of the probe in seconds
-# TYPE probe_duration_seconds gauge
-probe_duration_seconds{target="google_http", module="http_2xx"} 0.234
+# 探测端口连通性
+#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=tcp_connect&port=80"
+#curl "http://192.168.1.100:9090/probe?target=smtp.gmail.com&module=tcp_connect&port=587"
+```
 
-# HELP probe_success Whether the probe succeeded
-# TYPE probe_success gauge
-probe_success{target="google_http", module="http_2xx"} 1
-
-# HELP probe_status_code Status code or result code
-# TYPE probe_status_code gauge
-probe_status_code{target="google_http", module="http_2xx"} 200
-
-# HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
-# TYPE probe_icmp_rtt_ms gauge
-probe_icmp_rtt_ms{target="ping_host", module="icmp_ping"} 15.2
-
-# HELP probe_icmp_packets_sent Number of ICMP packets sent
-# TYPE probe_icmp_packets_sent gauge
-probe_icmp_packets_sent{target="ping_host", module="icmp_ping"} 3
-
-# HELP probe_icmp_packets_received Number of ICMP packets received
-# TYPE probe_icmp_packets_received gauge
-probe_icmp_packets_received{target="ping_host", module="icmp_ping"} 3
+**DNS 探测 (ad-hoc 目标)**:
+```bash
+# 测试 DNS 服务器
+#curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=dns_resolve&port=53"
 ```
 
 ### Prometheus 抓取配置
@@ -571,7 +576,7 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - google.com:80
+          - example.com:80    # 黑盒导出器风格的 relabel 配置
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -586,7 +591,22 @@ scrape_configs:
       module: [icmp_ping]
     static_configs:
       - targets:
-          - example.com:0
+          - 192.168.1.1:0    # ICMP 探测使用端口 0
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090  # 设备 IP
+
+  - job_name: 'blackbox_tcp'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - smtp.gmail.com:587
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -643,7 +663,7 @@ curl http://192.168.1.100:80/api/status
 curl http://192.168.1.100:9090/metrics
 
  实时探测执行
-curl "http://192.168.1.100:9090/probe?target=google_http&module=http_2xx"
+curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=80"
 ```
 
 ## 硬件自检
@@ -655,7 +675,7 @@ ESP32-C6 默认在启动时运行 7 项硬件自检，验证板卡功能：
 | 1 | NVS 存储 | 写入→读回→验证→清除 |
 | 2 | WiFi 初始化 | netif + WiFi 驱动 + MAC 地址 |
 | 3 | WiFi 扫描 | STA 模式扫描周围 AP |
-| 4 | DNS 解析 | 解析 dns.google |
+| 4 | DNS 解析 | 解析 httpbin.org |
 | 5 | HTTP 探测 | 请求 httpbin.org |
 | 6 | TCP 探测 | 连接 8.8.8.8:53 |
 | 7 | 指标服务器 | 端口 9090 绑定 |
@@ -734,6 +754,532 @@ histogram_quantile(0.95, probe_icmp_rtt_ms_bucket)
 rate(probe_success[5m])
 ```
 
+## 使用教程
+
+本节提供详细的实际使用案例，帮助用户快速上手 ESP32 Blackbox 的各种探测场景。
+
+### 1. TCP 连通性测试
+
+**用途**: 测试网络设备的端口可达性，常用于检查网关、路由器、服务等是否在线。
+
+**示例**: 测试网关 HTTP 端口是否开放
+
+```bash
+curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=tcp_connect&port=80"
+```
+
+**预期结果**:
+```bash
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#JPprobe_duration_seconds{target="192.168.1.1", module="tcp_connect"} 0.012
+
+# HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#TMprobe_success{target="192.168.1.1", module="tcp_connect"} 1
+
+# HELP probe_status_code Status code or result code
+# TYPE probe_status_code gauge
+#WTprobe_status_code{target="192.168.1.1", module="tcp_connect"} 0
+```
+
+**分析**: `probe_success=1` 表示端口可达，`probe_duration_seconds` 显示连接耗时。
+
+**进阶测试**: 检查 SMTP 服务
+```bash
+curl "http://192.168.1.100:9090/probe?target=smtp.gmail.com&module=tcp_connect&port=587"
+```
+
+### 2. HTTP 服务可用性检测
+
+**用途**: 验证 Web 服务是否正常响应，检测 HTTP 状态码和响应时间。
+
+**示例**: 检测百度首页是否可访问
+
+```bash
+curl "http://192.168.1.100:9090/probe?target=www.baidu.com&module=http_2xx&port=80"
+```
+
+**预期结果**:
+```bash
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#JPprobe_duration_seconds{target="www.baidu.com", module="http_2xx"} 0.156
+
+# HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#TMprobe_success{target="www.baidu.com", module="http_2xx"} 1
+
+# HELP probe_status_code Status code or result code
+# TYPE probe_status_code gauge
+#WTprobe_status_code{target="www.baidu.com", module="http_2xx"} 200
+```
+
+**分析**: `probe_status_code=200` 表示 HTTP 200 OK 响应。
+
+**HTTPS 测试**: 检测 GitHub
+```bash
+curl "http://192.168.1.100:9090/probe?target=github.com&module=https_2xx&port=443"
+```
+
+### 3. DNS 解析验证
+
+**用途**: 验证 DNS 服务器是否正常工作，域名解析是否成功。
+
+**示例**: 测试公共 DNS 服务器
+
+```bash
+curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=dns_resolve&port=53"
+```
+
+**预期结果**:
+```bash
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#JPprobe_duration_seconds{target="8.8.8.8", module="dns_resolve"} 0.023
+
+# HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#TMprobe_success{target="8.8.8.8", module="dns_resolve"} 1
+
+# HELP probe_status_code Status code or result code
+# TYPE probe_status_code gauge
+#WTprobe_status_code{target="8.8.8.8", module="dns_resolve"} 0
+```
+
+**分析**: `probe_success=1` 表示 DNS 解析成功。
+
+**自定义域名测试**:
+```bash
+curl "http://192.168.1.100:9090/probe?target=www.example.com&module=dns_resolve&port=53"
+```
+
+### 4. ICMP Ping 测试
+
+**用途**: 测试网络延迟和连通性，常用于监控网络质量和主机可用性。
+
+**示例**: 测试网关延迟
+
+```bash
+curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
+```
+
+**预期结果**:
+```bash
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+#JPprobe_duration_seconds{target="192.168.1.1", module="icmp_ping"} 0.025
+
+# HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+#TMprobe_success{target="192.168.1.1", module="icmp_ping"} 1
+
+# HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
+# TYPE probe_icmp_rtt_ms gauge
+#WTprobe_icmp_rtt_ms{target="192.168.1.1", module="icmp_ping"} 15.2
+
+# HELP probe_icmp_packets_sent Number of ICMP packets sent
+# TYPE probe_icmp_packets_sent gauge
+#WTprobe_icmp_packets_sent{target="192.168.1.1", module="icmp_ping"} 3
+
+# HELP probe_icmp_packets_received Number of ICMP packets received
+# TYPE probe_icmp_packets_received gauge
+#WTprobe_icmp_packets_received{target="192.168.1.1", module="icmp_ping"} 3
+```
+
+**分析**: `probe_icmp_rtt_ms` 显示往返时间毫秒数，`probe_icmp_packets_received` 显示成功接收包数。
+
+**外部主机测试**:
+```bash
+curl "http://192.168.1.100:9090/probe?target=8.8.8.8&module=icmp_ping"
+```
+
+### 5. Prometheus blackbox_exporter 集成
+
+**用途**: 完整集成 Prometheus 监控系统，实现自动化监控告警。
+
+#### Prometheus 配置文件
+
+创建 `prometheus-blackbox.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "blackbox_rules.yml"
+
+scrape_configs:
+# HTTP 服务监控
+- job_name: 'blackbox_http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - www.baidu.com:80
+          - httpbin.org:80
+          - github.com:443
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090  # ESP32 设备 IP
+      - source_labels: [__param_target]
+        regex: (.*):.*
+        target_label: port
+        replacement: $1
+
+# TCP 端口监控
+- job_name: 'blackbox_tcp'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - 192.168.1.1:80    # 网关 HTTP
+          - 192.168.1.1:22    # SSH
+          - smtp.gmail.com:587 # SMTP
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090
+      - source_labels: [__param_target]
+        regex: (.*):.*
+        target_label: port
+        replacement: $1
+
+# ICMP Ping 监控
+- job_name: 'blackbox_icmp'
+    metrics_path: /probe
+    params:
+      module: [icmp_ping]
+    static_configs:
+      - targets:
+          - 192.168.1.1:0    # 网关
+          - 8.8.8.8:0        # Google DNS
+          - www.baidu.com:0   # 百度
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090
+      - source_labels: [__param_target]
+        regex: (.*):.*
+        target_label: port
+        replacement: $1
+
+# ESP32 设备状态监控
+- job_name: 'esp32_blackbox'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['192.168.1.100:9090']
+```
+
+#### 告警规则
+
+创建 `blackbox_rules.yml`:
+
+```yaml
+groups:
+  - name: blackbox_alerts
+    rules:
+# # HTTP 服务不可用
+- alert: HttpProbeFailed
+    expr: probe_success{job="blackbox_http"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "HTTP 服务不可用: {{ $labels.instance }}"
+      description: "HTTP 服务 {{ $labels.instance }} 连续 1 分钟不可用"
+
+# # TCP 端口不可用
+- alert: TcpPortProbeFailed
+    expr: probe_success{job="blackbox_tcp"} == 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "TCP 端口不可用: {{ $labels.instance }}"
+      description: "TCP 端口 {{ $labels.instance }} 连续 1 分钟不可用"
+
+# # ICMP Ping 超时
+- alert: IcmpProbeFailed
+    expr: probe_success{job="blackbox_icmp"} == 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "ICMP Ping 失败: {{ $labels.instance }}"
+      description: "主机 {{ $labels.instance }} ICMP Ping 连续 2 分钟失败"
+
+# # 响应时间过长
+- alert: HighResponseTime
+    expr: probe_duration_seconds{job="blackbox_http"} > 2
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "高响应时间: {{ $labels.instance }}"
+      description: "HTTP 服务 {{ $labels.instance }} 响应时间超过 2 秒，持续 5 分钟"
+
+# # 包丢失率过高
+- alert: HighPacketLoss
+    expr: (probe_icmp_packets_sent - probe_icmp_packets_received) / probe_icmp_packets_sent > 0.2
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "高丢包率: {{ $labels.instance }}"
+      description: "ICMP 探测 {{ $labels.instance }} 丢包率超过 20%，持续 2 分钟"
+```
+
+### 6. 定时探测 vs 按需探测
+
+#### 预配置目标（定时探测）
+
+通过配置文件设置定期执行的探测任务：
+
+```json
+{
+  "scrape_interval": 30,
+  "metrics_port": 9090,
+  "modules": {
+    "http_2xx": {
+      "prober": "http",
+      "timeout": 10,
+      "http": {
+        "method": "GET",
+        "valid_status_codes": [200]
+      }
+    },
+    "icmp_ping": {
+      "prober": "icmp",
+      "timeout": 5,
+      "icmp": {
+        "packets": 3,
+        "payload_size": 56
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "baidu_http",
+      "target": "www.baidu.com",
+      "port": 80,
+      "module": "http_2xx",
+      "interval": 30
+    },
+    {
+      "name": "gateway_icmp",
+      "target": "192.168.1.1",
+      "port": 0,
+      "module": "icmp_ping",
+      "interval": 60
+    }
+  ]
+}
+```
+
+**特点**:
+- 系统自动定期执行
+- 配置持久化存储
+- 支持不同间隔时间
+- 适合长期监控
+
+#### 临时探测（按需探测）
+
+通过 `/probe` 端点进行即时探测：
+
+```bash
+# 临时检查某个服务状态
+#curl "http://192.168.1.100:9090/probe?target=www.example.com&module=http_2xx&port=80"
+
+# 故障时快速诊断
+#curl "http://192.168.1.100:9090/probe?target=192.168.1.1&module=icmp_ping"
+
+# 测试新部署的服务
+#curl "http://192.168.1.100:9090/probe?target=new-service.local&module=http_2xx&port=8080"
+```
+
+**特点**:
+- 即时执行，无需等待调度
+- 支持任意目标
+- 临时使用，不保存配置
+- 适合故障诊断和测试
+
+### 7. 使用 curl 命令行测试
+
+#### 基础测试命令
+
+**设备状态检查**:
+```bash
+curl -s http://192.168.1.100:9090/metrics | grep probe_success | head -5
+```
+
+**单个 HTTP 探测**:
+```bash
+curl -s "http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80"
+```
+
+**带详细输出的 HTTP 探测**:
+```bash
+curl -s "http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80" | \
+  grep -E "(probe_success|probe_duration_seconds|probe_status_code)"
+```
+
+**批量测试脚本**:
+```bash
+#!/bin/bash
+ESP32_IP="192.168.1.100"
+
+# 测试多个目标
+targets=(
+    "www.baidu.com:80:http_2xx"
+    "httpbin.org:80:http_2xx"
+    "8.8.8.8:53:dns_resolve"
+    "192.168.1.1:0:icmp_ping"
+)
+
+for target_info in "${targets[@]}"; do
+    IFS=':' read -r host port module <<< "$target_info"
+    echo "测试 $host:$port ($module)..."
+    curl -s "${ESP32_IP}:9090/probe?target=${host}&module=${module}&port=${port}"
+    echo "---"
+done
+```
+
+#### 性能测试
+
+**连续探测测试**:
+```bash
+# 连续 10 次探测同一目标
+for i in {1..10}; do
+    echo "第 $i 次探测:"
+    curl -s "http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80" | \
+      grep probe_duration_seconds
+    sleep 1
+done
+```
+
+**并发测试**:
+```bash
+# 并发执行多个探测（使用 xargs）
+echo "www.baidu.com:80:http_2xx" \
+     "httpbin.org:80:http_2xx" \
+     "8.8.8.8:53:dns_resolve" | \
+xargs -n3 -P3 -I {} bash -c '
+    host=$(echo {} | cut -d: -f1)
+    port=$(echo {} | cut -d: -f2)
+    module=$(echo {} | cut -d: -f3)
+    echo "测试 $host:$port ($module)..."
+    curl -s "192.168.1.100:9090/probe?target=${host}&module=${module}&port=${port}" | \
+      grep probe_success
+'
+```
+
+### 8. 在浏览器中查看探测结果
+
+#### 直接访问 Web 界面
+
+1. **设备状态页面**:
+```
+http://192.168.1.100:9090/
+```
+显示设备基本信息和简单的状态摘要。
+
+2. **完整指标页面**:
+```
+http://192.168.1.100:9090/metrics
+```
+显示所有 Prometheus 格式的指标数据（纯文本格式）。
+
+3. **实时探测页面**:
+```
+http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80
+```
+直接在浏览器中执行单次探测并返回结果。
+
+#### Web UI 配置管理
+
+1. **访问配置管理界面**:
+
+```
+http://192.168.1.100:/
+```
+（STA 模式下）
+
+2. **查看实时状态**:
+- 设备 IP 地址和运行时间
+- 当前配置的模块和目标数量
+- 各目标的最新探测结果
+- 响应时间和成功率统计
+
+3. **配置管理**:
+- 查看当前 JSON 配置
+- 编辑配置文件
+- 保存并热加载配置
+
+#### 浏览器调试技巧
+
+**查看原始指标数据**:
+```javascript
+// 在浏览器控制台中执行
+fetch('http://192.168.1.100:9090/metrics')
+  .then(response => response.text())
+  .then(data => {
+    console.log('所有指标数据:');
+    console.log(data);
+  });
+```
+
+**测试特定探测**:
+```javascript
+// 测试 HTTP 探测
+fetch('http://192.168.1.100:9090/probe?target=httpbin.org&module=http_2xx&port=80')
+  .then(response => response.text())
+  .then(data => {
+    console.log('HTTP 探测结果:');
+    console.log(data);
+  });
+```
+
+**实时监控**:
+```javascript
+// 每 5 秒刷新一次状态
+setInterval(() => {
+  fetch('http://192.168.1.100:9090/metrics')
+    .then(response => response.text())
+    .then(data => {
+      const successLines = data.match(/probe_success\{.*\} 1/g) || [];
+      const totalTargets = successLines.length;
+      console.log(`当前活跃目标: ${totalTargets}`);
+    });
+}, 5000);
+```
+
+### 总结
+
+本教程涵盖了 ESP32 Blackbox 的各种使用场景：
+
+- **基础连通性测试**: TCP、ICMP、DNS
+- **服务可用性检测**: HTTP/HTTPS 服务状态
+- **系统集成**: Prometheus 监控配置和告警规则
+- **使用模式**: 预配置定时探测 vs 按需临时探测
+- **命令行工具**: curl 批量测试和性能测试
+- **浏览器访问**: Web UI 使用和调试技巧
+
+通过这些实际案例，用户可以根据自己的需求选择合适的探测方式，快速诊断网络问题，建立完整的监控体系。
+
 ## 故障排除
 
 ### 搜索不到 AP 热点
@@ -741,8 +1287,6 @@ rate(probe_success[5m])
 **症状**：手机/电脑搜不到 `ESP32_Blackbox` WiFi 热点。
 
 **原因 1：board_test WiFi 初始化冲突（已修复）**
-
-ESP32-C6 启用了硬件自检（`board_test`），自检中调用 `esp_wifi_init()` 和 `esp_wifi_start()` 后只调了 `esp_wifi_stop()` 而没有 `esp_wifi_deinit()`。之后 `wifi_manager_init()` 再次调用 `esp_netif_init()` 返回 `ESP_ERR_INVALID_STATE`，被 `ESP_ERROR_CHECK` 直接 abort 崩溃，设备到不了 AP 启动阶段。
 
 **修复**：`board_test.c` 在 WiFi 扫描测试后增加 `esp_wifi_deinit()` 完整反初始化；`wifi_manager_init()` 对 `esp_netif_init()` 和 `esp_wifi_init()` 的 `ESP_ERR_INVALID_STATE` 做容错处理。
 
@@ -811,7 +1355,7 @@ cd $IDF_PATH
  在监视器中查看配置日志
 #YNI (xxx) CFG_MGR: SPIFFS: 总空间=XXXX 字节, 已用=YYYY 字节
 #XZI (xxx) CFG_MGR: JSON 解析完成: X 模块, Y 目标
-```
+#RM```
 
 ### 探测全部失败
 
@@ -833,7 +1377,7 @@ cd $IDF_PATH
 3. 查看 Web UI 中的配置是否正确
 
 **常见错误**:
-- `target not found`: 目标名称不存在
+- `target not found`: 目标名称不存在（注意：现在支持任意主机名/IP）
 - `module not found`: 模块名称不存在
 - `probe timeout`: 探测超时，尝试增加超时时间
 - `invalid target`: 目标配置无效
@@ -849,7 +1393,7 @@ cd $IDF_PATH
 1. 确保 ESP-IDF v6.0 安装完整
 2. 目标已设置: `idf.py set-target esp32c6`
 3. 更新子模块: `git submodule update --init --recursive`
-4. 清理并重新编译: `idf.py fullclean && idf.py build`
+4. 清理并重新编译: `idf.py fullclean && idf.py build
 5. 确认 `components/json/` 目录存在 (v6.0 本地 cJSON 组件)
 
 ### TLS 握手失败
@@ -890,5 +1434,5 @@ CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
 #XWI (xxx) CFG_MGR: 热加载配置...
 #XWI (xxx) CFG_MGR: JSON 解析完成: X 模块, Y 目标
 #XWI (xxx) CFG_MGR: 配置已热加载: version=Z
-```
+#YM```
 

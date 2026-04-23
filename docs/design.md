@@ -1,4 +1,4 @@
-﻿# ESP32 Blackbox 设计文档
+# ESP32 Blackbox 设计文档
 
 ## 设计目标
 
@@ -148,69 +148,29 @@ ZM    vTaskDelay(pdMS_TO_TICKS(interval_ms));
 SV}
 ``
 
-### 3. 黑盒导出器兼容性
-
-**设计问题**: 如何与 Prometheus 生态系统无缝集成？
-
-**解决方案**: 标准化标签体系和指标格式
-
-**标签设计**:
-- **目标标识**: `target="目标名称"` (而非 `target_ip:port`)
-- **模块标识**: `module="模块名称"` (而非 `type`)
-- **避免污染**: 不使用 port/type 标签，防止与现有系统冲突
-
-**指标格式对比**:
-**旧版本 (不兼容)**:
-# HELP probe_duration_seconds Duration of the probe in seconds
-# TYPE probe_duration_seconds gauge
-probe_duration_seconds{target="example.com", port="80", type="http"} 0.234
-
-**新版本 (兼容 blackbox_exporter)**:
-# HELP probe_duration_seconds Duration of the probe in seconds
-# TYPE probe_duration_seconds gauge
-probe_duration_seconds{target="google_http", module="http_2xx"} 0.234
-
-**Prometheus 抓取配置**:
-```yaml
-scrape_configs:
-  - job_name: 'blackbox_http'
-    metrics_path: /probe
-    params:
-      module: [http_2xx]
-    static_configs:
-      - targets:
-          - google.com:80
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: 192.168.1.100:9090
-```
-
 ### 4. 统一 Web 服务器架构
 
-**设计问题**: 如何同时支持 AP 模式配置和 STA 模式管理？
+**设计问题**: 如何同时支持 AP 模式配置和即席探测？
 
-**解决方案**: 单一服务器，运行时切换模式
+**解决方案**: 单一服务器，支持配置管理和即席探测
 
 **双模式设计**:
 - **AP 模式**: WiFi 凭据配置 (`/`, `/scan`, `/save`)
+- **即席探测**: `/probe?target=X&module=Y&port=P` 端点
 - **STA 模式**: 配置管理仪表板 (`/api/status`, `/api/config`, `/reload`)
 
-**路由分发逻辑**:
+**路由逻辑**:
 ```c
-/ Web 服务器启动时根据 WiFi 连接状态决定模式
+// Web 服务器路由分发
 #WKif (wifi_manager_is_connected()) {
-ST    // STA 模式 - 启动配置管理
-JN    web_server_start();  // /api/* endpoints
-YM} else {
-QJ    // AP 模式 - 启动配置门户
-YM    wifi_config_server_start();  // /scan, /save endpoints
+ST    // STA 模式 - 配置管理和即席探测
+JN    web_server_handle_probe_request();     // /probe 端点
+YM    web_server_start_config_api();        // /api/* 端点
+QJ} else {
+YM    // AP 模式 - WiFi 配置
+PB    wifi_config_server_start();           // /scan, /save 端点
 PB}
-``
-
+```
 ### 5. 原始 ICMP 实现
 
 **设计问题**: ESP-IDF v6.0 如何实现 ICMP ping？
@@ -473,13 +433,14 @@ JN}
 - [ ] 多设备集群管理
 - [ ] OTA 固件更新支持
 - [ ] 边缘计算集成
-- [ ] 告警规则引擎
 - [ ] 探测任务调度优化
+- [ ] 即席探测历史记录
+- [ ] 多目标并行探测
+- [ ] 探测失败智能重试机制
 
-### 长期规划 (6+ 个月)
-
-- [ ] 云端配置同步和管理
-- [ ] 机器学习异常检测
-- [ ] 多协议扩展 (gRPC, QUIC)
-- [ ] 容器化部署支持
-- [ ] 企业级监控解决方案
+### 即席探测功能 (已实现)
+- [x] 动态即席探测端点 `/probe`
+- [x] 支持任意主机名/IP 地址
+- [x] 可选端口参数支持
+- [x] 模块参数动态选择
+- [x] 实时 Prometheus 格式返回
