@@ -29,12 +29,34 @@
 #include "nvs_flash.h"
 
 #include "wifi_manager.h"
-#include "wifi_config_server.h"
+#include "web_server.h"
 #include "config_manager.h"
 #include "probe_manager.h"
 #include "metrics_server.h"
+#include "board_test.h"
 
 static const char *TAG = "MAIN";
+
+static void print_board_info(void)
+{
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  ESP32 Blackbox - Board Info");
+    ESP_LOGI(TAG, "  Target: " CONFIG_IDF_TARGET);
+    ESP_LOGI(TAG, "  IDF Version: %s", esp_get_idf_version());
+#if CONFIG_IDF_TARGET_ESP32C3
+    ESP_LOGI(TAG, "  Board: ESP32-C3 SuperMini (Nologo)");
+    ESP_LOGI(TAG, "  Arch: RISC-V single-core 160MHz");
+    ESP_LOGI(TAG, "  SRAM: 400KB, Flash: 4MB (embedded)");
+#elif CONFIG_IDF_TARGET_ESP32C6
+    ESP_LOGI(TAG, "  Board: Seeed Studio XIAO ESP32C6");
+    ESP_LOGI(TAG, "  Arch: RISC-V dual-core (HP 160MHz + LP 20MHz)");
+    ESP_LOGI(TAG, "  SRAM: 512KB, Flash: 4MB (external)");
+    ESP_LOGI(TAG, "  WiFi: 802.11ax (WiFi 6) + BLE 5.3 + Zigbee/Thread");
+#else
+    ESP_LOGI(TAG, "  Board: Unknown / Unsupported");
+#endif
+    ESP_LOGI(TAG, "========================================");
+}
 
 void app_main(void)
 {
@@ -50,6 +72,10 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     ESP_LOGI(TAG, "ESP32 Blackbox Starting...");
+    print_board_info();
+
+    /* 调试：打印 NVS 中的 WiFi 凭证内容 */
+    config_manager_nvs_dump();
 
     /* 初始化配置管理器和 WiFi 管理器 */
     config_manager_init();
@@ -62,10 +88,23 @@ void app_main(void)
 
         ret = wifi_manager_start_sta();
         if (ret == ESP_OK) {
+#ifdef CONFIG_ESP_BOARD_TEST
+            {
+                board_test_result_t test_result = {0};
+                ESP_LOGI(TAG, "Running board self-test...");
+                board_test_run(&test_result);
+                if (test_result.total_fail > 0) {
+                    ESP_LOGW(TAG, "Board self-test had %d failures, continuing startup...",
+                             test_result.total_fail);
+                }
+            }
+#endif
+
             /* 连接成功 - 启动探测管理和指标服务器 */
             probe_manager_init();
             probe_manager_start();
             metrics_server_start();
+            web_server_start();
             ESP_LOGI(TAG, "All services started");
             return;
         }
