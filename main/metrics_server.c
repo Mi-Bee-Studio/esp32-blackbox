@@ -178,16 +178,18 @@ static esp_err_t metrics_handler(httpd_req_t *req)
 }
 
 /**
- * GET /probe?target=X&module=Y - 单次同步探测 (blackbox_exporter 兼容)
+ * GET /probe?target=X&module=Y[&port=P] - 单次同步探测 (blackbox_exporter 兼容)
  *
- * target 参数: 目标名称 (对应 target->name)
- * module 参数: 模块名称 (对应 module->name)
+ * target 参数: 目标主机名/IP (任意值，不需要预配置)
+ * module 参数: 模块名称 (对应 module->name，必须预配置)
+ * port 参数: 可选端口，默认 0 (由模块决定默认端口)
  */
 static esp_err_t probe_handler(httpd_req_t *req)
 {
     char query[QUERY_BUF_SIZE] = {0};
     char target_val[128] = {0};
     char module_val[32] = {0};
+    char port_val[8] = {0};
 
     /* 解析 URL 查询参数 */
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
@@ -213,12 +215,22 @@ static esp_err_t probe_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    /* 同步执行探测 */
-    probe_result_t result = probe_manager_trigger_probe(target_val, module_val);
+    /* 解析可选端口参数 */
+    uint16_t port = 0;
+    if (httpd_query_key_value(query, "port", port_val, sizeof(port_val)) == ESP_OK && port_val[0] != '\0') {
+        int p = atoi(port_val);
+        if (p > 0 && p <= 65535) {
+            port = (uint16_t)p;
+        }
+    }
+
+    /* 对任意主机执行探测 (不需要预配置目标) */
+    probe_result_t result = probe_manager_probe_host(target_val, port, module_val);
 
     /* 构造临时 target 用于标签生成 */
     probe_target_t tmp = {0};
     strncpy(tmp.target, target_val, sizeof(tmp.target) - 1);
+    tmp.port = port;
     strncpy(tmp.module_name, module_val, sizeof(tmp.module_name) - 1);
 
     /* 生成 Prometheus 指标 */

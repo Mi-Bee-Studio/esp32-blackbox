@@ -60,4 +60,18 @@ const probe_target_t* probe_manager_get_targets(uint8_t *count);
  */
 probe_result_t probe_manager_trigger_probe(const char *target_name, const char *module_name);
 
+/**
+ * @brief 对任意主机执行探测 (供 /probe 端点临时目标使用)
+ *
+ * 不需要预配置目标，直接用主机名/IP、端口和模块名执行探测。
+ * 兼容 Prometheus blackbox_exporter 的 /probe?target=X 用法。
+ *
+ * @param host 主机名或 IP 地址
+ * @param port 目标端口 (0 则使用模块默认端口)
+ * @param module_name 模块名称
+ * @return 探测结果
+ */
+probe_result_t probe_manager_probe_host(const char *host, uint16_t port,
+                                              const char *module_name);
+
 #endif

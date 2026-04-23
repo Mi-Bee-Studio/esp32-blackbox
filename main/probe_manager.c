@@ -232,3 +232,31 @@ probe_result_t probe_manager_trigger_probe(const char *target_name, const char *
 
     return result;
 }
+
+probe_result_t probe_manager_probe_host(const char *host, uint16_t port,
+                                              const char *module_name)
+{
+    probe_result_t result = {0};
+
+    /* 查找模块 */
+    const probe_module_t *module = config_get_module_by_name(module_name);
+    if (module == NULL) {
+        snprintf(result.error_msg, sizeof(result.error_msg),
+                 "模块 '%s' 未找到", module_name);
+        return result;
+    }
+
+    /* 构造临时目标 */
+    probe_target_t tmp = {0};
+    strncpy(tmp.target, host, sizeof(tmp.target) - 1);
+    tmp.port = port;
+    strncpy(tmp.module_name, module_name, sizeof(tmp.module_name) - 1);
+
+    /* 直接执行探测 */
+    result = dispatch_probe(&tmp, module);
+
+    ESP_LOGI(TAG, "临时探测 %s:%d (%s): success=%d, duration=%dms",
+             host, port, module_name, result.success, result.duration_ms);
+
+    return result;
+}
