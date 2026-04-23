@@ -10,12 +10,9 @@
 #include <string.h>
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
-#include "esp_log.h"
 #include "esp_timer.h"
 
-static const char *TAG = "PROBE_DNS";
-
-probe_result_t probe_dns_execute(const probe_target_t *target)
+probe_result_t probe_dns_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;

@@ -26,7 +26,7 @@
 
 static const char *TAG = "PROBE_TCP";
 
-probe_result_t probe_tcp_execute(const probe_target_t *target)
+probe_result_t probe_tcp_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
@@ -38,8 +38,8 @@ probe_result_t probe_tcp_execute(const probe_target_t *target)
     }
     
     struct timeval tv;
-    tv.tv_sec = target->timeout_ms / 1000;
-    tv.tv_usec = (target->timeout_ms % 1000) * 1000;
+    tv.tv_sec = module_config->timeout_ms / 1000;
+    tv.tv_usec = (module_config->timeout_ms % 1000) * 1000;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     
@@ -74,7 +74,7 @@ probe_result_t probe_tcp_execute(const probe_target_t *target)
     return result;
 }
 
-probe_result_t probe_tcp_tls_execute(const probe_target_t *target)
+probe_result_t probe_tcp_tls_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
@@ -107,8 +107,8 @@ probe_result_t probe_tcp_tls_execute(const probe_target_t *target)
         server_fd.fd = sock;
 
         struct timeval tv;
-        tv.tv_sec = target->timeout_ms / 1000;
-        tv.tv_usec = (target->timeout_ms % 1000) * 1000;
+        tv.tv_sec = module_config->timeout_ms / 1000;
+        tv.tv_usec = (module_config->timeout_ms % 1000) * 1000;
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -138,9 +138,8 @@ probe_result_t probe_tcp_tls_execute(const probe_target_t *target)
         goto cleanup;
     }
 
-    mbedtls_ssl_conf_authmode(&conf, target->verify_ssl ?
-                              MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE);
-    mbedtls_ssl_conf_read_timeout(&conf, target->timeout_ms);
+    mbedtls_ssl_conf_authmode(&conf, MBEDTLS_SSL_VERIFY_NONE);
+    mbedtls_ssl_conf_read_timeout(&conf, module_config->timeout_ms);
 
     ret = mbedtls_ssl_setup(&ssl, &conf);
     if (ret != 0) {

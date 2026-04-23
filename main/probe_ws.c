@@ -22,8 +22,6 @@
 
 static const char *TAG = "PROBE_WS";
 
-static const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
 static int base64_encode(const unsigned char *input, int input_len, char *output, int output_size)
 {
     static const char base64_chars[] = 
@@ -75,7 +73,7 @@ static int base64_encode(const unsigned char *input, int input_len, char *output
     return j;
 }
 
-probe_result_t probe_ws_execute(const probe_target_t *target)
+probe_result_t probe_ws_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
@@ -93,8 +91,8 @@ probe_result_t probe_ws_execute(const probe_target_t *target)
     }
     
     struct timeval tv;
-    tv.tv_sec = target->timeout_ms / 1000;
-    tv.tv_usec = (target->timeout_ms % 1000) * 1000;
+    tv.tv_sec = module_config->timeout_ms / 1000;
+    tv.tv_usec = (module_config->timeout_ms % 1000) * 1000;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     
@@ -131,7 +129,7 @@ probe_result_t probe_ws_execute(const probe_target_t *target)
         "Sec-WebSocket-Key: %s\r\n"
         "Sec-WebSocket-Version: 13\r\n"
         "\r\n",
-        target->path[0] ? target->path : "/",
+        "/",
         target->target, target->port,
         key_b64);
     
@@ -161,7 +159,7 @@ probe_result_t probe_ws_execute(const probe_target_t *target)
     return result;
 }
 
-probe_result_t probe_wss_execute(const probe_target_t *target)
+probe_result_t probe_wss_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
@@ -194,8 +192,8 @@ probe_result_t probe_wss_execute(const probe_target_t *target)
         server_fd.fd = sock;
 
         struct timeval tv;
-        tv.tv_sec = target->timeout_ms / 1000;
-        tv.tv_usec = (target->timeout_ms % 1000) * 1000;
+        tv.tv_sec = module_config->timeout_ms / 1000;
+        tv.tv_usec = (module_config->timeout_ms % 1000) * 1000;
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -226,9 +224,8 @@ probe_result_t probe_wss_execute(const probe_target_t *target)
         goto cleanup;
     }
 
-    mbedtls_ssl_conf_authmode(&conf, target->verify_ssl ?
-                              MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE);
-    mbedtls_ssl_conf_read_timeout(&conf, target->timeout_ms);
+    mbedtls_ssl_conf_authmode(&conf, MBEDTLS_SSL_VERIFY_NONE);
+    mbedtls_ssl_conf_read_timeout(&conf, module_config->timeout_ms);
 
     ret = mbedtls_ssl_setup(&ssl, &conf);
     if (ret != 0) {
@@ -274,7 +271,7 @@ probe_result_t probe_wss_execute(const probe_target_t *target)
             "Sec-WebSocket-Key: %s\r\n"
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n",
-            target->path[0] ? target->path : "/",
+            "/",
             target->target, target->port,
             key_b64);
 

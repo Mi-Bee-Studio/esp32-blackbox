@@ -8,10 +8,8 @@
 #include "probe_types.h"
 #include <string.h>
 #include "esp_http_client.h"
-#include "esp_log.h"
+#include "esp_crt_bundle.h"
 #include "esp_timer.h"
-
-static const char *TAG = "PROBE_HTTP";
 
 /**
  * @brief 执行 HTTP 探测
@@ -21,15 +19,15 @@ static const char *TAG = "PROBE_HTTP";
  * @param target 探测目标配置
  * @return probe_result_t 探测结果（成功时包含状态码和耗时）
  */
-probe_result_t probe_http_execute(const probe_target_t *target)
+probe_result_t probe_http_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
     
     // 构建 HTTP URL
     char url[512];
-    snprintf(url, sizeof(url), "http://%s:%d%s", 
-             target->target, target->port, target->path);
+    snprintf(url, sizeof(url), "http://%s:%d/",
+             target->target, target->port);
     
     // 记录开始时间
     int64_t start_time = esp_timer_get_time();
@@ -38,7 +36,7 @@ probe_result_t probe_http_execute(const probe_target_t *target)
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = target->timeout_ms,
+        .timeout_ms = module_config->timeout_ms,
         .disable_auto_redirect = true,  // 禁止自动重定向，精确测量目标耗时
     };
     
@@ -76,15 +74,15 @@ probe_result_t probe_http_execute(const probe_target_t *target)
  * @param target 探测目标配置
  * @return probe_result_t 探测结果（成功时包含状态码和耗时）
  */
-probe_result_t probe_https_execute(const probe_target_t *target)
+probe_result_t probe_https_execute(const probe_target_t *target, const probe_module_config_t *module_config)
 {
     probe_result_t result = {0};
     result.success = false;
     
     // 构建 HTTPS URL
     char url[512];
-    snprintf(url, sizeof(url), "https://%s:%d%s", 
-             target->target, target->port, target->path);
+    snprintf(url, sizeof(url), "https://%s:%d/",
+             target->target, target->port);
     
     int64_t start_time = esp_timer_get_time();
     
@@ -92,9 +90,10 @@ probe_result_t probe_https_execute(const probe_target_t *target)
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = target->timeout_ms,
+        .timeout_ms = module_config->timeout_ms,
         .disable_auto_redirect = true,
-        .skip_cert_common_name_check = !target->verify_ssl,  // 根据配置决定是否验证证书
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
     
     esp_http_client_handle_t client = esp_http_client_init(&config);
