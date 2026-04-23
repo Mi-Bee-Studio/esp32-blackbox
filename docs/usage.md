@@ -1,13 +1,15 @@
-# ESP32 Blackbox 使用指南
+﻿# ESP32 Blackbox 使用指南
 
 ## 目录
 
 - [环境准备](#环境准备)
+- [支持的开发板](#支持的开发板)
+- [构建与烧录](#构建与烧录)
 - [首次配置 (AP 模式)](#首次配置-ap-模式)
-- [项目配置](#项目配置)
-- [添加探测目标](#添加探测目标)
-- [编译与烧录](#编译与烧录)
+- [配置文件格式](#配置文件格式)
+- [Web UI 配置](#web-ui-配置)
 - [验证运行](#验证运行)
+- [硬件自检](#硬件自检)
 - [Prometheus 集成](#prometheus-集成)
 - [故障排除](#故障排除)
 
@@ -28,17 +30,122 @@ git clone --recursive -b v6.0 https://github.com/espressif/esp-idf.git
 
 要求 ESP-IDF **v6.0** (mbedTLS v4 + PSA Crypto API)。
 
-### 2. 设置目标芯片
-
-```bash
-idf.py set-target esp32c3
-```
-
-### 3. 验证环境
+### 2. 验证环境
 
 ```bash
 idf.py --version
 ```
+
+## 支持的开发板
+
+| 项目 | ESP32-C3 SuperMini | Seeed XIAO ESP32C6 |
+|------|--------------------|--------------------|
+| 芯片 | ESP32-C3 (QFN32) | ESP32-C6FH4 (QFN32) |
+| 架构 | RISC-V 单核 160MHz | RISC-V 双核 (HP 160MHz + LP 20MHz) |
+| SRAM | 400KB | 512KB |
+| Flash | 4MB (内嵌) | 4MB (内嵌) |
+| WiFi | 802.11 b/g/n | 802.11ax (WiFi 6) |
+| BLE | Bluetooth 5 LE | Bluetooth 5.3 LE |
+| 其他 | - | Zigbee, Thread (IEEE 802.15.4) |
+| USB | USB-Serial/JTAG | USB-Serial/JTAG |
+| 自检 | 默认关闭 | 默认开启 |
+| 分区表 | 默认 (1MB app) | 自定义 (1.875MB app) |
+
+## 构建与烧录
+
+### 方式一：Python 构建脚本（推荐）
+
+无需手动运行 ESP-IDF export.bat，脚本自动配置工具链路径：
+
+```bash
+# ESP32-C6 构建并烧录
+python build.py esp32c6 flash COM6
+
+# ESP32-C3 构建并烧录
+python build.py esp32c3 flash COM3
+
+# 仅构建（不烧录）
+python build.py esp32c6 build
+
+# 全量清理后重新构建
+python build.py esp32c6 clean
+```
+
+**完整参数**：
+```
+python build.py <target> [action] [port]
+
+target:  esp32c3 | esp32c6
+action:  build | flash | monitor | clean  (默认: build)
+port:    COM 端口号，如 COM3、COM6       (默认: 自动检测)
+```
+
+### 方式二：ESP-IDF 命令行
+
+需先运行 ESP-IDF 的 export.bat 激活环境：
+
+```bash
+# 首次构建 - 设置目标芯片（会自动 fullclean + 加载 sdkconfig.defaults.<target>）
+idf.py set-target esp32c6        # 或 esp32c3
+
+# 编译
+idf.py build
+
+# 烧录
+idf.py -p COM6 flash
+
+# 烧录 + 串口监控（Ctrl+] 退出）
+idf.py -p COM6 flash monitor
+
+# 清理
+idf.py fullclean
+```
+
+### 方式三：Windows 批处理脚本
+
+```cmd
+build_target.bat esp32c6 build          # 仅构建
+build_target.bat esp32c6 flash COM6     # 构建并烧录
+build_target.bat esp32c6 clean          # 全量清理后构建
+```
+
+### 切换目标芯片
+
+从 C3 切换到 C6（或反之）时，**必须重新设置目标**：
+
+```bash
+idf.py set-target esp32c6    # 自动执行 fullclean + 重新生成 sdkconfig
+```
+
+ESP-IDF 会自动加载对应的 `sdkconfig.defaults.<target>` 文件。
+
+### sdkconfig 分层机制
+
+ESP-IDF 构建系统按以下顺序加载配置：
+
+```
+sdkconfig.defaults              ← 通用配置（WiFi AP、FreeRTOS、LWIP 等）
+sdkconfig.defaults.<target>     ← 目标特定配置（Flash、加密、分区表）
+```
+
+| 文件 | 内容 |
+|------|------|
+| `sdkconfig.defaults` | WiFi AP SSID/密码、重试次数、FreeRTOS、LWIP、日志级别 |
+| `sdkconfig.defaults.esp32c3` | C3 Flash 4MB QIO、硬件加密加速 |
+| `sdkconfig.defaults.esp32c6` | C6 Flash 4MB QIO、硬件加密加速、自定义分区表 |
+
+### COM 端口识别
+
+Windows 下查看可用串口：
+
+```powershell
+[System.IO.Ports.SerialPort]::GetPortNames()
+```
+
+一般规则：
+- XIAO ESP32C6 通常出现在 `COM5` ~ `COM8`
+- ESP32-C3 SuperMini 通常出现在 `COM3` ~ `COM6`
+- 同一时间只接一块板子可避免端口混淆
 
 ## 首次配置 (AP 模式)
 
@@ -70,197 +177,423 @@ idf.py --version
 
 **方式 1: 擦除 NVS (推荐)**
 ```bash
-idf.py -p COM3 erase-flash
-idf.py -p COM3 flash
+idf.py -p COM6 erase-flash
+idf.py -p COM6 flash
 ```
 
 **方式 2: 长按复位键**
 - 按住 RST/EN 按钮不放，设备重启后可进入重新配置模式
 
-## 项目配置
+## 配置文件格式
 
-### WiFi 配置
+ESP32 Blackbox 使用 SPIFFS 文件系统存储 JSON 配置文件。配置文件路径为 `/spiffs/blackbox.json`。
 
-WiFi 凭据可通过以下方式配置 (优先级从高到低):
+### 配置文件结构
 
-1. **AP 配置页面** (运行时，存储到 NVS)
-2. **Kconfig menuconfig** (编译时默认值)
+```json
+{
+  "modules": {
+    "http_2xx": {
+      "prober": "http",
+      "timeout": 10,
+      "http": {
+        "method": "GET",
+        "valid_status_codes": [200],
+        "no_follow_redirects": false
+      }
+    },
+    "tcp_connect": {
+      "prober": "tcp",
+      "timeout": 5,
+      "tcp": {
+        "tls": false,
+        "query": "",
+        "expected_response": ""
+      }
+    },
+    "icmp_ping": {
+      "prober": "icmp",
+      "timeout": 5,
+      "icmp": {
+        "packets": 3,
+        "payload_size": 56,
+        "pattern": 0
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "google_http",
+      "target": "google.com",
+      "port": 80,
+      "module": "http_2xx",
+      "interval": 30
+    },
+    {
+      "name": "google_dns",
+      "target": "8.8.8.8",
+      "port": 53,
+      "module": "dns_resolve",
+      "interval": 30
+    },
+    {
+      "name": "ping_host",
+      "target": "example.com",
+      "port": 0,
+      "module": "icmp_ping",
+      "interval": 60
+    }
+  ],
+  "scrape_interval": 30,
+  "metrics_port": 9090
+}
+```
 
-运行 menuconfig:
+### 字段说明
+
+#### 全局配置字段
+
+ 字段 | 类型 | 必需 | 默认值 | 说明 |
+------|------|------|---------|------|
+ scrape_interval | number | 否 | 30 | 抓取间隔（秒） |
+ metrics_port | number | 否 | 9090 | Metrics 服务器端口 |
+
+#### 模块配置 (modules)
+
+模块配置定义了各种探测协议的具体参数。
+
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ prober | string | 是 | 模块类型：http, https, tcp, tcp_tls, dns, icmp, ws, wss |
+ timeout | number | 否 | 超时时间（秒） |
+ http | object | 否 | HTTP 模块特定配置 |
+ tcp | object | 否 | TCP 模块特定配置 |
+ dns | object | 否 | DNS 模块特定配置 |
+ icmp | object | 否 | ICMP 模块特定配置 |
+
+**HTTP 模块配置**:
+
+```json
+
+  "prober": "http",
+  "timeout": 10,
+  "http": {
+    "method": "GET",
+    "valid_status_codes": [200, 301, 302],
+    "no_follow_redirects": false
+  }
+}
+```
+
+字段说明:
+- method: HTTP 方法 (GET, HEAD, POST, PUT, DELETE)
+- valid_status_codes: 有效的 HTTP 状态码数组
+- no_follow_redirects: 是否不跟随重定向
+
+**TCP 模块配置**:
+
+```json
+
+  "prober": "tcp",
+  "timeout": 5,
+  "tcp": {
+    "tls": false,
+    "query": "",
+    "expected_response": ""
+  }
+}
+```
+
+字段说明:
+- tls: 是否使用 TLS (仅 tcp_tls 类型有效)
+- query: 发送的查询字符串
+- expected_response: 期望的响应字符串
+
+**DNS 模块配置**:
+
+```json
+
+  "prober": "dns",
+  "timeout": 5,
+  "dns": {
+    "query_name": "dns.google",
+    "query_type": 1
+  }
+}
+```
+
+字段说明:
+- query_name: 要查询的域名
+- query_type: 查询类型 (1=A, 28=AAAA, 2=NS 等)
+
+**ICMP 模块配置**:
+
+```json
+
+  "prober": "icmp",
+  "timeout": 5,
+  "icmp": {
+    "packets": 3,
+    "payload_size": 56,
+    "pattern": 0
+  }
+}
+```
+
+字段说明:
+- packets: 发送的 ICMP 数据包数量
+- payload_size: 数据负载大小 (字节)
+- pattern: 负载填充模式 (0-255)
+
+#### 目标配置 (targets)
+
+目标配置引用模块定义来执行具体的探测任务。
+
+| 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ name | string | 是 | 目标名称（用于指标标签） |
+ target | string | 是 | 目标主机名或 IP 地址 |
+ port | number | 是 | 目标端口 (ICMP 可为 0) |
+ module | string | 是 | 引用的模块名称 |
+ interval | number | 否 | 探测间隔（秒），不使用则用全局 scrape_interval |
+
+#### 模块名称映射
+
+prober 字串对应的模块类型：
+
+ prober | 模块类型 | 描述 |
+--------|----------|------|
+ "http" | MODULE_HTTP | HTTP 明文连接 |
+ "https" | MODULE_HTTPS | HTTPS 加密连接 |
+ "tcp" | MODULE_TCP | TCP 连接测试 |
+ "tcp_tls" | MODULE_TCP_TLS | TLS 加密连接测试 |
+ "dns" | MODULE_DNS | DNS 解析测试 |
+ "icmp" | MODULE_ICMP | ICMP ping 测试 |
+ "ws" | MODULE_WS | WebSocket 连接测试 |
+ "wss" | MODULE_WSS | WebSocket Secure 连接测试 |
+
+## Web UI 配置
+
+设备成功连接 WiFi 后，会启动 STA 模式的 Web 配置管理界面。
+
+### 访问配置界面
+
+1. 确认设备已连接 WiFi，获取设备 IP 地址
+2. 在浏览器中访问 `http://<设备IP>:80`
+
+### 界面功能
+
+#### 设备信息面板
+
+- **IP 地址**: 设备当前的网络 IP 地址
+- **WiFi SSID**: 当前连接的 WiFi 网络名称
+- **运行时间**: 设备已运行的时间
+- **模块数量**: 当前配置的探测模块数量
+- **目标数量**: 当前配置的探测目标数量
+- **抓取间隔**: 全局抓取间隔设置
+- **Metrics 端口**: 指标服务器端口
+
+#### 探测状态表格
+
+ 列 | 说明 |
+------|------|
+ 名称 | 目标配置的名称 |
+ 目标 | 探测的目标地址 |
+ 端口 | 目标端口 |
+ 状态 | 探测结果状态 (OK/FAIL) |
+ 耗时 | 探测耗时 |
+ 错误 | 错误信息 (如有) |
+
+#### 配置编辑器
+
+- **JSON 编辑器**: 显示当前配置的完整 JSON
+- **保存**: 保存配置到 SPIFFS 文件
+- **重新加载**: 从 SPIFFS 重新加载配置（热加载）
+- **热重载**: 重新加载配置但不验证格式化
+
+### API 接口
+
+#### 获取设备状态
+
 ```bash
-idf.py menuconfig
+curl http://<设备IP>:80/api/status
 ```
 
-导航至 `ESP32 Blackbox Configuration`:
-
-```
-ESP32 Blackbox Configuration
-├── WiFi SSID           → 默认 WiFi 名称 (编译时)
-├── WiFi Password       → 默认 WiFi 密码 (编译时)
-├── AP SSID             → AP 热点名称 (默认 ESP32_Blackbox)
-├── AP Password         → AP 热点密码 (默认 12345678)
-└── Maximum retry       → 连接失败最大重试次数 (默认 5)
-```
-
-### Metrics 端口配置
-
-编辑 `main/config_manager.c`:
-
-```c
-s_config.metrics_port = 9090;  // 修改为你需要的端口
-```
-
-## 添加探测目标
-
-编辑 `main/config_manager.c` 中的 `s_targets[]` 数组。
-
-### 支持的协议
-
-| 协议 | type 值 | 说明 |
-|------|---------|------|
-| HTTP | `PROBE_TYPE_HTTP` | HTTP 明文连接 |
-| HTTPS | `PROBE_TYPE_HTTPS` | HTTPS 加密连接 |
-| TCP | `PROBE_TYPE_TCP` | TCP 连接测试 |
-| TCP+TLS | `PROBE_TYPE_TCP_TLS` | TLS 加密 TCP 连接测试 |
-| DNS | `PROBE_TYPE_DNS` | DNS 解析测试 |
-| WS | `PROBE_TYPE_WS` | WebSocket |
-| WSS | `PROBE_TYPE_WSS` | WebSocket Secure (TLS 加密) |
-
-### 示例配置
-
-#### HTTP 探测
-
-```c
+响应示例:
+```json
 {
-    .type = PROBE_TYPE_HTTP,
-    .target = "example.com",
-    .port = 80,
-    .interval_ms = 30000,      // 30秒探测一次
-    .timeout_ms = 10000,       // 10秒超时
-    .path = "/",
-    .verify_ssl = false,
-},
+  "uptime_s": 3600,
+  "modules": 3,
+  "targets": 2,
+  "scrape_interval_s": 30,
+  "metrics_port": 9090,
+  "results": [
+    {
+      "name": "google_http",
+      "target": "google.com",
+      "port": 80,
+      "success": true,
+      "duration_ms": 234,
+      "error": ""
+    },
+    {
+      "name": "google_dns",
+      "target": "8.8.8.8",
+      "port": 53,
+      "success": false,
+      "duration_ms": 0,
+      "error": "DNS resolution failed"
+    }
+  ]
+}
 ```
 
-#### HTTPS 探测
-
-```c
-{
-    .type = PROBE_TYPE_HTTPS,
-    .target = "example.com",
-    .port = 443,
-    .interval_ms = 30000,
-    .timeout_ms = 10000,
-    .path = "/api/health",
-    .verify_ssl = true,        // 验证证书
-},
-```
-
-#### TCP 连接探测
-
-```c
-{
-    .type = PROBE_TYPE_TCP,
-    .target = "8.8.8.8",       // 直接 IP 地址
-    .port = 53,
-    .interval_ms = 60000,      // 1分钟探测一次
-    .timeout_ms = 5000,
-    .path = "",
-    .verify_ssl = false,
-},
-```
-
-#### DNS 解析探测
-
-```c
-{
-    .type = PROBE_TYPE_DNS,
-    .target = "google.com",    // 域名
-    .port = 53,
-    .interval_ms = 60000,
-    .timeout_ms = 5000,
-    .path = "",
-    .verify_ssl = false,
-},
-```
-
-#### WebSocket 探测
-
-```c
-{
-    .type = PROBE_TYPE_WS,
-    .target = "echo.websocket.org",
-    .port = 80,
-    .interval_ms = 30000,
-    .timeout_ms = 10000,
-    .path = "/",
-    .verify_ssl = false,
-},
-```
-
-#### TCP+TLS 探测
-
-测试目标端口的 TLS 握手是否成功，分别记录 TCP 连接耗时和 TLS 握手耗时:
-
-```c
-{
-    .type = PROBE_TYPE_TCP_TLS,
-    .target = "google.com",
-    .port = 443,
-    .interval_ms = 30000,
-    .timeout_ms = 10000,
-    .path = "",
-    .verify_ssl = false,        // 设为 true 验证服务端证书
-},
-```
-
-#### WebSocket Secure (WSS) 探测
-
-通过 TLS 加密通道完成 WebSocket 握手，分别记录 TCP 连接、TLS 握手、WebSocket 握手耗时:
-
-```c
-{
-    .type = PROBE_TYPE_WSS,
-    .target = "echo.websocket.org",
-    .port = 443,
-    .interval_ms = 30000,
-    .timeout_ms = 10000,
-    .path = "/",
-    .verify_ssl = false,
-},
-```
-
-## 编译与烧录
-
-### 1. 编译项目
+#### 获取配置文件
 
 ```bash
-idf.py build
+curl http://<设备IP>:80/api/config
 ```
 
-### 2. 烧录固件
+返回完整的 JSON 配置内容，可用于备份。
+
+#### 更新配置
 
 ```bash
-idf.py -p /dev/ttyUSB0 flash
+curl -X POST http://<设备IP>:80/api/config \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "modules": {
+      "http_2xx": {
+        "prober": "http",
+        "timeout": 10,
+        "http": {
+          "method": "GET",
+          "valid_status_codes": [200]
+        }
+      }
+    },
+    "targets": [
+      {
+        "name": "test_target",
+        "target": "httpbin.org",
+        "port": 80,
+        "module": "http_2xx",
+        "interval": 60
+      }
+    ]
+  }'
 ```
 
-Windows:
+#### 热加载配置
+
 ```bash
-idf.py -p COM3 flash
+curl -X POST http://<设备IP>:80/api/reload
 ```
 
-### 3. 查看日志
+#### 响应说明
+
+- **状态码**: 200 表示成功，4xx/5xx 表示失败
+- **错误信息**: 失败时会返回具体的错误原因
+- **热加载**: 成功后配置会立即生效，无需重启
+
+## /probe 端点使用
+
+### 实时执行探测
+
+系统提供了 `/probe` 端点用于实时执行探测，返回 Prometheus 格式的指标。
+
+#### 使用方法
 
 ```bash
-idf.py monitor
+#curl "http://<设备IP>:9090/probe?target=<目标名称>&module=<模块名称>"
 ```
 
-按 `Ctrl+]` 退出监视器。
+#### 参数说明
 
-### 4. 烧录并监控
+ 参数 | 必需 | 说明 |
+------|------|------|
+ target | 是 | 目标配置的名称 |
+ module | 是 | 模块名称 |
+
+#### 使用示例
+
+**HTTP 探测**:
+```bash
+#curl "http://192.168.1.100:9090/probe?target=google_http&module=http_2xx"
+```
+
+**ICMP 探测**:
+```bash
+#curl "http://192.168.1.100:9090/probe?target=ping_host&module=icmp_ping"
+```
+
+#### 响应格式
 
 ```bash
-idf.py -p COM3 flash monitor
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+probe_duration_seconds{target="google_http", module="http_2xx"} 0.234
+
+# HELP probe_success Whether the probe succeeded
+# TYPE probe_success gauge
+probe_success{target="google_http", module="http_2xx"} 1
+
+# HELP probe_status_code Status code or result code
+# TYPE probe_status_code gauge
+probe_status_code{target="google_http", module="http_2xx"} 200
+
+# HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
+# TYPE probe_icmp_rtt_ms gauge
+probe_icmp_rtt_ms{target="ping_host", module="icmp_ping"} 15.2
+
+# HELP probe_icmp_packets_sent Number of ICMP packets sent
+# TYPE probe_icmp_packets_sent gauge
+probe_icmp_packets_sent{target="ping_host", module="icmp_ping"} 3
+
+# HELP probe_icmp_packets_received Number of ICMP packets received
+# TYPE probe_icmp_packets_received gauge
+probe_icmp_packets_received{target="ping_host", module="icmp_ping"} 3
+```
+
+### Prometheus 抓取配置
+
+使用 `/probe` 端点配置 Prometheus 抓取任务：
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'blackbox_http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - google.com:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090  # 设备 IP
+
+  - job_name: 'blackbox_icmp'
+    metrics_path: /probe
+    params:
+      module: [icmp_ping]
+    static_configs:
+      - targets:
+          - example.com:0
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090  # 设备 IP
 ```
 
 ## 验证运行
@@ -269,66 +602,67 @@ idf.py -p COM3 flash monitor
 
 正常启动日志:
 ```
-I (xxx) MAIN: ESP32 Blackbox Probe Starting...
-I (xxx) WIFI: NVS 中无 WiFi 凭据，启动 AP 模式
-I (xxx) WIFI: AP SSID: ESP32_Blackbox, 密码: 12345678
-I (xxx) WIFI: AP 已启动，等待用户配置...
-I (xxx) CONFIG: 配置服务器已启动，监听端口 80
+I (xxx) MAIN: ESP32 Blackbox Starting...
+I (xxx) MAIN:   Target: esp32c6
+I (xxx) MAIN:   Board: Seeed Studio XIAO ESP32C6
+I (xxx) WIFI: AP mode started - connect to 'ESP32_Blackbox'
 ```
 
 ### STA 模式 (已配置 WiFi)
 
 正常启动日志:
 ```
-I (xxx) MAIN: ESP32 Blackbox Probe Starting...
-I (xxx) WIFI: NVS 中找到 WiFi 凭据，启动 STA 模式
-I (xxx) WIFI: 正在连接 SSID: YourWiFi
-I (xxx) WIFI: wifi_init_sta finished.
-I (xxx) WIFI: connected to ap SSID:YourWiFi
+I (xxx) MAIN: ESP32 Blackbox Starting...
+I (xxx) MAIN:   Target: esp32c6
+I (xxx) WIFI: connected to 'YourWiFi'
 I (xxx) WIFI: got ip:192.168.1.100
-I (xxx) MAIN: WiFi connected, starting services...
+I (xxx) CFG_MGR: Config loaded: 3 modules, 2 targets
 I (xxx) PROBE_MGR: Probe manager started
 I (xxx) METRICS: Metrics server started on port 9090
+I (xxx) WEB_SRV: STA web dashboard started on port 80
 I (xxx) MAIN: All services started
 ```
 
-### 1. 获取设备 IP
+### 获取设备 IP
 
 在监视器日志中查看:
 ```
 I (xxx) WIFI: got ip:192.168.1.100
 ```
 
-### 2. 访问 Metrics 端点
+### 访问服务端点
 
 ```bash
+ Web 配置界面
+curl http://192.168.1.100:80/
+
+ 设备状态 API
+curl http://192.168.1.100:80/api/status
+
+ Prometheus 指标
 curl http://192.168.1.100:9090/metrics
+
+ 实时探测执行
+curl "http://192.168.1.100:9090/probe?target=google_http&module=http_2xx"
 ```
 
-预期输出:
-```
-# HELP probe_duration_seconds Duration of the probe in seconds
-# TYPE probe_duration_seconds gauge
-probe_duration_seconds{target="example.com",port="80",type="http"} 0.234
+## 硬件自检
 
-# HELP probe_success Whether the probe succeeded
-# TYPE probe_success gauge
-probe_success{target="example.com",port="80",type="http"} 1
+ESP32-C6 默认在启动时运行 7 项硬件自检，验证板卡功能：
 
-# HELP probe_status_code HTTP status code or TCP connect result
-# TYPE probe_status_code gauge
-probe_status_code{target="example.com",port="80",type="http"} 200
+| # | 测试项 | 验证内容 |
+|---|--------|----------|
+| 1 | NVS 存储 | 写入→读回→验证→清除 |
+| 2 | WiFi 初始化 | netif + WiFi 驱动 + MAC 地址 |
+| 3 | WiFi 扫描 | STA 模式扫描周围 AP |
+| 4 | DNS 解析 | 解析 dns.google |
+| 5 | HTTP 探测 | 请求 httpbin.org |
+| 6 | TCP 探测 | 连接 8.8.8.8:53 |
+| 7 | 指标服务器 | 端口 9090 绑定 |
 
-# HELP probe_tls_handshake_seconds Duration of TLS handshake in seconds
-# TYPE probe_tls_handshake_seconds gauge
-probe_tls_handshake_seconds{target="google.com",port="443",type="tcp_tls"} 0.128
-```
+**注意**：自检需要 WiFi 网络连接才能完成 DNS/HTTP/TCP 测试。首次启动（AP 模式）时这些测试会失败，这是正常的。
 
-### 3. 访问状态页面
-
-```bash
-curl http://192.168.1.100:9090/
-```
+通过 `idf.py menuconfig` → ESP32 Blackbox Configuration → Run board self-test on startup 调整开关。
 
 ## Prometheus 集成
 
@@ -337,6 +671,8 @@ curl http://192.168.1.100:9090/
 参考: https://prometheus.io/download/
 
 ### 2. 配置 Prometheus
+
+#### 方式一：使用 /metrics 端点（传统方式）
 
 编辑 `prometheus.yml`:
 
@@ -348,8 +684,7 @@ global:
 scrape_configs:
   - job_name: 'esp32-blackbox'
     static_configs:
-      - targets:
-          - '192.168.1.100:9090'  # 你的设备 IP
+      - targets: ['192.168.1.100:9090']
 ```
 
 ### 3. 启动 Prometheus
@@ -367,10 +702,15 @@ scrape_configs:
 在 Expression 框中输入查询:
 
 ```
+ 传统抓取方式
 probe_success
 probe_duration_seconds
 probe_status_code
-probe_tls_handshake_seconds
+
+ /probe 端点方式
+probe_success{module="http_2xx"}
+probe_duration_seconds{module="icmp_ping"}
+probe_icmp_rtt_ms
 ```
 
 ### Grafana 集成 (可选)
@@ -379,27 +719,73 @@ probe_tls_handshake_seconds
 2. 添加 Prometheus 数据源
 3. 创建 Dashboard
 
-示例查询:
+**Grafana 查询示例**:
 ```promql
-# 探测成功率
-avg(probe_success) by (job)
+# 探测成功率按模块统计
+sum(probe_success) by (module)
 
-# 平均响应时间
+# 平均响应时间按目标
 avg(probe_duration_seconds) by (target)
 
-# 按类型统计
-count(probe_success == 1) by (type)
+# ICMP 响应时间分布
+histogram_quantile(0.95, probe_icmp_rtt_ms_bucket)
+
+# 探测成功率趋势
+rate(probe_success[5m])
 ```
 
 ## 故障排除
 
 ### 搜索不到 AP 热点
 
+**症状**：手机/电脑搜不到 `ESP32_Blackbox` WiFi 热点。
+
+**原因 1：board_test WiFi 初始化冲突（已修复）**
+
+ESP32-C6 启用了硬件自检（`board_test`），自检中调用 `esp_wifi_init()` 和 `esp_wifi_start()` 后只调了 `esp_wifi_stop()` 而没有 `esp_wifi_deinit()`。之后 `wifi_manager_init()` 再次调用 `esp_netif_init()` 返回 `ESP_ERR_INVALID_STATE`，被 `ESP_ERROR_CHECK` 直接 abort 崩溃，设备到不了 AP 启动阶段。
+
+**修复**：`board_test.c` 在 WiFi 扫描测试后增加 `esp_wifi_deinit()` 完整反初始化；`wifi_manager_init()` 对 `esp_netif_init()` 和 `esp_wifi_init()` 的 `ESP_ERR_INVALID_STATE` 做容错处理。
+
+**原因 2：设备未完成启动**
+
 1. 确认设备已上电并完成启动 (等待 5 秒)
-2. 确认 AP 密码为 `12345678` (8位)
+2. 检查串口日志确认 AP 模式已启动
 3. 靠近设备，WiFi 信号范围有限
-4. 检查串口日志确认 AP 模式已启动
-5. 尝试 `idf.py erase-flash` 擦除后重新烧录
+
+**原因 3：NVS 数据异常**
+
+```bash
+idf.py -p COM6 erase-flash
+idf.py -p COM6 flash
+```
+
+### App 分区溢出
+
+**症状**：构建时报 `app partition is too small for binary`。
+
+**原因**：ESP32-C6 的固件体积超过默认分区表的 1MB app 限制。
+
+**修复**：项目使用自定义分区表 `partitions.csv`，将 app 分区扩大到 1.875MB。该配置在 `sdkconfig.defaults.esp32c6` 中自动生效：
+
+```
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+```
+
+### 工具链版本不匹配
+
+**症状**：构建时报 `Tool doesn't match supported version from list ['esp-15.2.0_20251204']`。
+
+**原因**：ESP-IDF v6.0 需要 `esp-15.2.0_20251204` 工具链，旧版 `esp-14.2.0` 不兼容。
+
+**修复**：运行 ESP-IDF 安装器更新工具链：
+
+```bash
+cd $IDF_PATH
+./install.sh esp32c6    # 安装 C6 所需工具
+```
+
+或手动检查 `C:\Espressif\tools\riscv32-esp-elf\` 下是否有 `esp-15.2.0_20251204` 目录。
 
 ### WiFi 连接失败
 
@@ -408,11 +794,31 @@ count(probe_success == 1) by (type)
 3. 检查是否有特殊字符需要转义
 4. 擦除 NVS 重新配置: `idf.py erase-flash`
 
+### 配置文件问题
+
+**症状**：配置文件损坏或格式错误
+
+**解决方案**:
+1. 通过 Web UI 的"重新加载"按钮重新从 SPIFFS 加载
+2. 检查 JSON 格式是否正确
+3. 删除 `/spiffs/blackbox.json` 文件让系统使用工厂默认配置
+
+**文件检查**:
+```bash
+ 通过串口监视器查看 SPIFFS 状态
+#NTidf.py -p COM6 monitor
+
+ 在监视器中查看配置日志
+#YNI (xxx) CFG_MGR: SPIFFS: 总空间=XXXX 字节, 已用=YYYY 字节
+#XZI (xxx) CFG_MGR: JSON 解析完成: X 模块, Y 目标
+```
+
 ### 探测全部失败
 
 1. 确认目标服务器可达
 2. 检查防火墙设置
 3. 增加 timeout_ms 值
+4. 检查配置文件中的模块引用是否正确
 
 ### Metrics 服务无响应
 
@@ -420,10 +826,28 @@ count(probe_success == 1) by (type)
 2. 检查 metrics_port 配置
 3. 确认端口未被占用
 
+### /probe 端点错误
+
+1. 确认目标名称和模块名称存在
+2. 检查参数格式是否正确
+3. 查看 Web UI 中的配置是否正确
+
+**常见错误**:
+- `target not found`: 目标名称不存在
+- `module not found`: 模块名称不存在
+- `probe timeout`: 探测超时，尝试增加超时时间
+- `invalid target`: 目标配置无效
+
+### Web UI 访问问题
+
+1. 确认设备 IP 地址正确
+2. 检查端口 80 是否被占用
+3. 确认设备已连接 STA 模式
+
 ### 编译错误
 
 1. 确保 ESP-IDF v6.0 安装完整
-2. 目标已设置: `idf.py set-target esp32c3`
+2. 目标已设置: `idf.py set-target esp32c6`
 3. 更新子模块: `git submodule update --init --recursive`
 4. 清理并重新编译: `idf.py fullclean && idf.py build`
 5. 确认 `components/json/` 目录存在 (v6.0 本地 cJSON 组件)
@@ -437,3 +861,34 @@ count(probe_success == 1) by (type)
    - `-0x2700`: 证书验证失败
    - `-0x7200`: SSL 握手超时
    - `-0x0050`: 网络发送失败
+
+### XIAO ESP32C6 Flash 大小
+
+部分批次的 XIAO ESP32C6 配备 8MB Flash（非 4MB）。如果烧录时 esptool 报 Flash 大小不匹配，修改 `sdkconfig.defaults.esp32c6`：
+
+```
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+```
+
+然后执行 `python build.py esp32c6 clean` 重新构建。
+
+### 配置热加载问题
+
+如果配置更新后没有生效：
+
+1. 检查配置文件的 JSON 格式是否正确
+2. 确认模块引用是否存在
+3. 查看 Web UI 中的"重新加载"按钮是否执行成功
+4. 重启设备让配置完全生效
+
+**调试信息**:
+```bash
+ 通过串口查看配置版本变化
+#VYidf.py -p COM6 monitor
+
+#XWI (xxx) CFG_MGR: 热加载配置...
+#XWI (xxx) CFG_MGR: JSON 解析完成: X 模块, Y 目标
+#XWI (xxx) CFG_MGR: 配置已热加载: version=Z
+```
+

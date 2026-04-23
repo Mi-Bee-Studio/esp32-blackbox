@@ -1,236 +1,485 @@
-# ESP32 Blackbox 设计文档
+﻿# ESP32 Blackbox 设计文档
 
 ## 设计目标
 
-1. **轻量级**: 适用于资源受限的嵌入式设备 (ESP32-C3, 400KB SRAM)
-2. **零配置**: 首次启动 AP 模式，Web 页面配置 WiFi，无需串口操作
-3. **低功耗**: 间歇性探测减少能耗
-4. **可靠性**: 稳定的网络探测和自动重连
-5. **可观测性**: Prometheus 标准化指标输出
+1. **黑盒导出器兼容**: 完全兼容 blackbox_exporter 的标签体系和抓取模式
+2. **模块化架构**: 探测协议与配置分离，支持灵活的参数组合
+3. **配置热加载**: 无需重启即可更新探测配置
+4. **零配置启动**: 首次启动 AP 模式，Web 页面配置 WiFi
+5. **资源优化**: 针对 ESP32-C3/C6 400-512KB SRAM 优化设计
 
 ## 技术选型
 
 ### ESP-IDF v6.0
 
-选择 ESP-IDF v6.0 的原因:
+选择 ESP-IDF v6.0 的关键原因:
 - mbedTLS v4 + PSA Crypto API，更现代的加密框架
+- 移除了旧的 `entropy.h`, `ctr_drbg.h`，简化 TLS 配置
 - 更完善的 WiFi AP/STA 切换支持
-- 更好的 RISC-V (ESP32-C3) 支持
 - 原生支持 NVS 非易失性存储
+- 更好的 RISC-V (ESP32-C3/C6) 支持
 
-### 目标硬件
+### HTTP 框架选择
 
-| 项目 | 规格 |
-|------|------|
-| 芯片 | ESP32-C3 (QFN32) |
-| 架构 | RISC-V 单核 160MHz |
-| Flash | 4MB |
-| SRAM | 400KB |
-| WiFi | 802.11 b/g/n |
-| BLE | Bluetooth 5 LE |
+**原始方案**: LwIP raw API
 
-### 协议选择
+**最终方案**: esp_http_server (LWIP + 标准 HTTP)
 
-| 协议 | 用途 | 依赖 |
-|------|------|------|
-| HTTP/HTTPS | Web 服务探测 | esp_http_client |
-| TCP | 端口连通性测试 | lwip/sockets |
-| TCP+TLS | TLS 加密连接探测 | lwip/sockets + mbedtls v4 |
-| DNS | DNS 解析测试 | lwip/netdb |
-| WebSocket | 实时通信测试 | lwip/sockets |
-| WebSocket Secure | TLS 加密 WebSocket 测试 | lwip/sockets + mbedtls v4 |
+**选择理由**:
+1. **API 简单**: esp_http_server 提供标准 HTTP 服务器接口
+2. **功能完整**: 自动处理 HTTP 协议细节
+3. **稳定可靠**: 经过 ESP-IDF 充分测试
+4. **资源友好**: 相比 raw API 更节省内存
+
+### 配置存储选择
+
+**候选方案**:
+- NVS 键值对存储
+- 文件系统存储
+- SPIFFS + JSON 配置文件
+
+**选择 SPIFFS + JSON**:
+1. **配置复杂度**: JSON 支持复杂数据结构（模块、目标数组）
+2. **可读性**: 人类可读的配置文件
+3. **工具链**: 丰富的 JSON 处理库（cJSON）
+4. **扩展性**: 易于添加新的配置字段
+4. **调试友好**: 可直接查看文件内容
+
+### 目标硬件支持
+
+| 项目 | ESP32-C3 SuperMini | Seeed XIAO ESP32C6 |
+|------|--------------------|--------------------|
+| 芯片 | ESP32-C3 (QFN32) | ESP32-C6FH4 (QFN32) |
+| 架构 | RISC-V 单核 160MHz | RISC-V 双核 (HP 160MHz + LP 20MHz) |
+| Flash | 4MB (内嵌) | 4MB (内嵌) |
+| SRAM | 400KB | 512KB |
+| WiFi | 802.11 b/g/n | 802.11ax (WiFi 6) |
+| BLE | Bluetooth 5 LE | Bluetooth 5.3 LE |
+| 其他 | - | Zigbee, Thread (IEEE 802.15.4) |
+| 分区表 | 默认 (1MB app) | 自定义 (1.875MB app) |
+
+### 协议栈选择
+
+| 协议 | 实现文件 | 核心依赖 | 特性 |
+|------|----------|----------|------|
+| HTTP/HTTPS | `probe_http.c` | esp_http_client | 支持自定义方法、状态码验证 |
+| TCP | `probe_tcp.c` | lwip/sockets | 基础 TCP 连接测试 |
+| TCP+TLS | `probe_tcp.c` | lwip/sockets + mbedtls v4 | TLS 握手计时 |
+| DNS | `probe_dns.c` | lwip/netdb | DNS 解析响应时间 |
+| ICMP Ping | `probe_icmp.c` | lwip/sockets + lwip/icmp | 原始套接字，RTT 测量 |
+| WebSocket | `probe_ws.c` | lwip/sockets | 基础 WebSocket 连接 |
+| WebSocket Secure | `probe_ws.c` | lwip/sockets + mbedtls v4 | TLS + WebSocket 握手计时 |
 
 ## 核心设计决策
 
-### 1. 首次配置: AP 模式
+### 1. 模块化探测架构
 
-**设计**: 硬编码 WiFi vs AP 配置 vs BLE 配置
+**设计问题**: 如何支持多种探测协议且配置灵活？
 
-**选择**: AP 模式 Web 配置
+**解决方案**: 模块系统设计
 
-**理由**:
-- 无需电脑连接串口
-- 手机/电脑浏览器即可配置
-- 用户体验最好
-- NVS 持久化凭据，配置一次永久有效
+**设计要点**:
+- **分离配置**: 协议参数配置与具体探测目标分离
+- **引用机制**: 目标通过 `module_name` 引用模块配置
+- **类型分发**: probe_manager 根据模块类型分发到对应实现
 
-**流程**:
+**实现示例**:
+``c
+// 模块定义 - 告诉系统如何探测 HTTP
+PJstatic probe_module_t s_modules[] = {
+NH    {
+PV        .name = "http_2xx",
+JW        .config = {
+YB            .type = MODULE_HTTP,
+QH            .timeout_ms = 10000,
+WJ            .config.http = {
+YV                .method = "GET",
+QJ                .valid_status_codes = {200},
+NQ                .no_follow_redirects = false
+MK            }
+PX        }
+WV    }
+SN};
+
+// 目标定义 - 使用模块
+#RZstatic probe_target_t s_targets[] = {
+YB    {
+HQ        .name = "google_homepage",
+YX        .target = "google.com",
+JX        .port = 80,
+SB        .interval_ms = 30000,
+VW        .module_name = "http_2xx"  // 引用上面的模块配置
+HT    }
+JQ};
+``
+
+### 2. SPIFFS 配置热加载
+
+**设计问题**: 如何实现运行时配置更新？
+
+**解决方案**: 版本计数器 + SPIFFS 重载
+
+**核心机制**:
+- **配置版本**: `static uint8_t s_config_version`
+- **原子更新**: 配置验证通过后 s_config_version++
+- **事件驱动**: 每个探测循环检查版本变化
+- **同步生效**: 版本变化自动触发配置重新加载
+
+**工作流程**:
+``c
+// 探测任务主循环
+#PKvoid probe_manager_loop(void) {
+TX    // 检查配置版本变化
+BP    if (config_get_version() != s_config_version) {
+QJ        ESP_LOGI(TAG, "Config version changed, reloading...");
+VT        probe_manager_reload_targets();
+JQ        s_config_version = config_get_version();
+NM    }
+XS>
+ZP    // 执行探测
+QH    for (int i = 0; i < target_count; i++) {
+VY        probe_target_t *target = &targets[i];
+JQ        const probe_module_t *module = config_get_module_by_name(target->module_name);
+NV        execute_probe(module, target);
+PJ    }
+JQ>
+KS    // 等待间隔
+ZM    vTaskDelay(pdMS_TO_TICKS(interval_ms));
+SV}
+``
+
+### 3. 黑盒导出器兼容性
+
+**设计问题**: 如何与 Prometheus 生态系统无缝集成？
+
+**解决方案**: 标准化标签体系和指标格式
+
+**标签设计**:
+- **目标标识**: `target="目标名称"` (而非 `target_ip:port`)
+- **模块标识**: `module="模块名称"` (而非 `type`)
+- **避免污染**: 不使用 port/type 标签，防止与现有系统冲突
+
+**指标格式对比**:
+**旧版本 (不兼容)**:
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+probe_duration_seconds{target="example.com", port="80", type="http"} 0.234
+
+**新版本 (兼容 blackbox_exporter)**:
+# HELP probe_duration_seconds Duration of the probe in seconds
+# TYPE probe_duration_seconds gauge
+probe_duration_seconds{target="google_http", module="http_2xx"} 0.234
+
+**Prometheus 抓取配置**:
+```yaml
+scrape_configs:
+  - job_name: 'blackbox_http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - google.com:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.100:9090
 ```
-首次启动 → NVS 无凭据 → AP 模式 (SSID: ESP32_Blackbox)
-                           → 用户连接 → 浏览器打开配置页
-                           → 选择 WiFi → 输入密码 → 保存至 NVS
-                           → 重启 → STA 模式自动连接
-```
 
-### 2. 探测执行模型
+### 4. 统一 Web 服务器架构
 
-**设计**: 轮询模型 vs 事件模型
+**设计问题**: 如何同时支持 AP 模式配置和 STA 模式管理？
 
-**选择**: 轮询模型
+**解决方案**: 单一服务器，运行时切换模式
 
-**理由**:
-- 实现简单，可预测的探测间隔
-- 适合间歇性探测场景
-- 便于结果聚合和统计
+**双模式设计**:
+- **AP 模式**: WiFi 凭据配置 (`/`, `/scan`, `/save`)
+- **STA 模式**: 配置管理仪表板 (`/api/status`, `/api/config`, `/reload`)
 
-### 3. 配置管理
+**路由分发逻辑**:
+```c
+/ Web 服务器启动时根据 WiFi 连接状态决定模式
+#WKif (wifi_manager_is_connected()) {
+ST    // STA 模式 - 启动配置管理
+JN    web_server_start();  // /api/* endpoints
+YM} else {
+QJ    // AP 模式 - 启动配置门户
+YM    wifi_config_server_start();  // /scan, /save endpoints
+PB}
+``
 
-**设计**: NVS 持久化 + 静态代码配置
+### 5. 原始 ICMP 实现
 
-**选择**: 混合方案
+**设计问题**: ESP-IDF v6.0 如何实现 ICMP ping？
 
-**已实现**:
-- WiFi SSID/密码: NVS 持久化 (通过 AP 配置页面)
-- 探测目标: 代码静态配置 (config_manager.c)
+**解决方案**: lwIP 原始套接字
 
-**计划**:
-- 探测目标也支持 Web 动态配置
-- 配置版本管理
+**技术要点**:
+- **SOCK_RAW + IPPROTO_ICMP**: 使用 lwIP 原始套接字发送 ICMP
+- **校验和计算**: 手动实现 ICMP 校验和算法
+- **包匹配**: 使用任务句柄作为 ICMP ID 确保包唯一性
 
-### 4. Metrics 输出
+**实现优势**:
+- **lwIP 兼容**: 与现有网络栈集成良好
+- **低延迟**: 直接网络访问，无需额外协议层
+- **可靠**: 实现 Echo Request/Reply 完整流程
 
-**设计**: Push vs Pull
+## 性能优化设计
 
-**选择**: Pull (Prometheus 模型)
+### 内存管理
 
-**理由**:
-- 设备作为 HTTP 服务器，被动响应
-- 降低设备功耗和复杂性
-- 便于 Prometheus 标准集成
+| 组件 | 内存占用 | 优化策略 |
+|------|----------|----------|
+| 探测任务 | 16KB 栈 | 避免动态分配，使用栈变量 |
+| 配置系统 | 静态数组 | 固定最大限制，避免 OOM |
+| TLS 栈 | 8KB | 使用 PSA Crypto，减少熵源开销 |
+| JSON 处理 | 复用缓冲区 | 限制配置文件大小 (64KB) |
+| 网络缓冲 | lwIP 默认 | 合理设置 SO_RCVTIMEO |
 
-### 5. 错误处理
+### 探测调度优化
 
-采用静默失败策略:
-- 探测失败不影响其他探测任务
-- 错误信息存储在 result 中
-- 通过 metrics 暴露错误状态
+**串行执行策略**:
 
-## 性能考量
+- **优势**: 实现简单，资源使用可预测
+- **优势**: 避免多线程竞争条件
+- **劣势**: 无法并行探测不同目标
+- **平衡**: 通过合理间隔满足大部分使用场景
 
-### 内存使用
+**间隔设置**:
+```c
+// 最小间隔保护 (防止 watchdog 超时)
+define MIN_PROBE_INTERVAL_MS    5000
 
-| 组件 | 估计内存 |
-|------|----------|
-| WiFi 栈 | ~40KB |
-| LwIP | ~20KB |
-| Probe Task | ~16KB 栈 (含 TLS) |
-| Metrics Task | ~8KB 栈 |
-| Config Server Task | ~4KB 栈 |
-| TLS (mbedTLS v4 / PSA) | ~25KB |
-| App 分区 | ~960KB (94% 使用) |
+// 自动间隔调整 (如果目标未指定 interval)
+#VYif (target->interval_ms == 0) {
+   target->interval_ms = s_config.scrape_interval_ms;
 
-### 网络探测超时
+``
 
-合理的超时设置:
-- HTTP/HTTPS: 10-30秒
-- TCP: 5-10秒
-- TCP+TLS/WSS: 10-15秒 (TLS 握手需要额外时间)
-- DNS: 5秒
+### 错误处理策略
 
-### 探测间隔
+**静默失败模式**:
+- 单个探测失败不影响其他探测任务
+- 错误信息记录在 result.error_msg 中
+- 通过 metrics 暴露失败状态
+- 系统整体保持稳定运行
 
-建议间隔:
-- 关键服务: 30秒
-- 普通服务: 1-5分钟
-- 低优先级: 10分钟以上
+**错误分类处理**:
+```c
+// 超时错误
+#HTif (result.success == false && strstr(result.error_msg, "timeout")) {
+SN    // 可能是网络问题，下次重试
+VQ}
 
-## 安全性考虑
+// 连接错误
+#WWif (result.success == false && strstr(result.error_msg, "connection")) {
+NY    // 可能是服务不可用，标记为失败
+QN}
+
+// 协议错误
+#PTif (result.success == false && strstr(result.error_msg, "protocol")) {
+VX    // 配置问题，需要检查配置
+XM}
+``
+
+## 安全性设计
 
 ### WiFi 安全
 
-- AP 模式使用 WPA2-PSK (SSID: `ESP32_Blackbox`, 密码: `12345678`)
-- STA 模式使用 WPA2-PSK 连接用户 WiFi
-- WiFi 凭据加密存储在 NVS 中
+- **AP 模式**: WPA2-PSK 加密，默认密码 `12345678`（局域网使用）
+- **STA 模式**: 用户配置 WPA2/WPA3 加密网络
+- **NVS 存储**: WiFi 凭据加密存储，安全传输
 
-### TLS/SSL
+### 配置文件安全
 
-- TCP+TLS 和 WSS 探测使用 mbedTLS v4 库
-- TLS 通过 PSA Crypto API 自动管理随机数和密钥
-- 支持证书验证 (可选, 通过 `verify_ssl` 字段控制)
-- TLS 探测分阶段计时: TCP 连接耗时、TLS 握手耗时独立记录
-- 支持 SNI (Server Name Indication) 扩展
+- **文件权限**: SPIFFS 配置文件仅系统可读写
+- **输入验证**: 严格验证 JSON 格式和数据范围
+- **防止溢出**: 固定大小缓冲区，使用 strncpy/snprintf
 
-### 配置页面安全
+### 网络服务安全
 
-- AP 模式配置服务器仅在有客户端连接时运行
-- 配置完成后自动重启进入 STA 模式，AP 关闭
-- 密码通过 HTTPS 表单提交 (当前为 HTTP，局域网内使用)
+- **AP 模式**: 仅在有客户端连接时运行，完成后自动关闭
+- **STA 模式**: 配置管理仅限局域网访问
+- **输入净化**: 所有用户输入都经过长度和格式检查
 
-### 输入验证
+### TLS 安全性
 
-- 所有目标地址和端口经过长度检查
-- URL 构造使用 snprintf 防止溢出
-- WiFi 凭据长度校验
+**mbedTLS v4 + PSA Crypto**:
+- 自动密钥管理，无需手动处理随机数
+- 支持 SNI (Server Name Indication)
+- 可选证书验证（通过 verify_ssl 配置）
+- 分阶段计时，便于性能分析
 
 ## 扩展性设计
 
-### 添加新协议
+### 添加新探测协议
 
-1. 在 `config_manager.h` 添加类型枚举
-2. 实现 `probe_xxx_execute()` 函数
-3. 在 `probe_manager.c` 的 switch 中添加 case 分支
-4. 更新 `metrics_server.c` 添加协议名称映射
+**步骤 1**: 更新配置头文件
+```c
+// config_manager.h
+QYtypedef enum {
+PN    MODULE_HTTP,      // 已有
+YZ    MODULE_TCP,       // 已有
+YK    MODULE_DNS,       // 已有
+VM    MODULE_ICMP,      // 已有
+XS    MODULE_NEW_PROTO, // 新增
+PN} probe_module_type_t;
+``
 
-### 持久化配置
+**步骤 2**: 实现探测函数
+```c
+// probe_new_proto.c
+#NXprobe_result_t probe_new_proto_execute(const probe_target_t *target,
+                                      const probe_module_config_t *module_config) {
+    // 实现新协议探测逻辑
+QN}
+``
 
-已实现:
-- NVS 存储 WiFi SSID 和密码
-- AP 配置 Web 服务器
+**步骤 3**: 更新模块配置
+```c
+// config_manager.c
+#VMtypedef struct {
+PV    uint32_t timeout_ms;
+ZY    // 新协议特定配置
+JH    new_proto_config_t new_proto;
+ module_config_union_t;
+``
 
-计划实现:
-- NVS 存储探测目标列表
-- WebSocket API 动态配置
-- 配置版本管理
+**步骤 4**: 注册到配置系统
+```c
+// config_manager.c - 工厂默认配置
+#NMstatic const probe_module_t s_factory_modules[] = {
+JQ    {
+NM        .name = "new_proto_module",
+KQ        .config = {
+XS            .type = MODULE_NEW_PROTO,
+PX            .timeout_ms = 10000,
+BV            .config.new_proto = {/* 默认配置 */}
+VW        }
+YK    }
+SN};
+``
+
+### 配置系统扩展
+
+**添加新配置字段**:
+```json
+
+ "modules": {
+   "existing_module": {
+HS      "prober": "http",
+QW      "timeout": 10,
+BH      "http": {
+WV        "method": "GET",
+PT        "new_field": "value"  // 新增字段
+MK      }
+SN    }
+VY  },
+ "targets": [...]
+JN}
+``
+
+**向后兼容性**:
+- 新字段使用默认值，旧配置仍可正常运行
+- 移除的字段在升级时自动使用默认值
+- 版本控制确保配置平滑迁移
 
 ## 监控指标设计
 
-### Prometheus 指标命名规范
+### 指标分类
 
-遵循 Prometheus 最佳实践:
-- 使用下划线分隔
-- 包含目标标签
-- 包含协议类型标签
+| 指标名称 | 类型 | 标签 | 用途 |
+|----------|------|------|------|
+| probe_duration_seconds | Gauge | target, module | 探测总耗时 |
+| probe_success | Gauge | target, module | 探测是否成功 |
+| probe_status_code | Gauge | target, module | HTTP 状态码或结果码 |
+| probe_tls_handshake_seconds | Gauge | target, module | TLS 握手耗时 (仅适用) |
+| probe_icmp_rtt_ms | Gauge | target, module | ICMP 往返时间 (仅 ICMP) |
+ probe_icmp_packets_sent | Gauge | target, module | ICMP 发送包数 (仅 ICMP) |
+ probe_icmp_packets_received | Gauge | target, module | ICMP 接收包数 (仅 ICMP) |
 
-### 指标类型
+### 标签设计原则
 
-| 指标 | 类型 | 说明 |
-|------|------|------|
-| probe_duration_seconds | Gauge | 探测耗时 |
-| probe_success | Gauge | 成功标志 |
-| probe_status_code | Gauge | 响应码 |
-| probe_tls_handshake_seconds | Gauge | TLS 握手耗时 (仅 tcp_tls/wss) |
+1. **目标标识**: `target="目标名称"` 提供业务逻辑标识
+2. **模块标识**: `module="模块名称"` 提供技术类型标识  
+3. **避免污染**: 不使用通用标签如 `host`, `instance`
+4. **字段稳定**: 标签名称和含义保持向后兼容
 
-### 标签设计
+### 指标示例
 
-```promql
-probe_duration_seconds{target="example.com", port="443", type="https"}
+**HTTP 探测指标**:
 ```
+ HELP probe_duration_seconds Duration of the probe in seconds
+ TYPE probe_duration_seconds gauge
+#NXprobe_duration_seconds{target="google_http", module="http_2xx"} 0.234
 
-标签组合确保唯一性。
+ HELP probe_success Whether the probe succeeded
+ TYPE probe_success gauge
+#VJprobe_success{target="google_http", module="http_2xx"} 1
+
+ HELP probe_status_code Status code or result code
+ TYPE probe_status_code gauge
+#MKprobe_status_code{target="google_http", module="http_2xx"} 200
+``
+
+**ICMP 探测指标**:
+```
+ HELP probe_duration_seconds Duration of the probe in seconds
+ TYPE probe_duration_seconds gauge
+#QTprobe_duration_seconds{target="ping_host", module="icmp_ping"} 0.025
+
+ HELP probe_success Whether the probe succeeded
+ TYPE probe_success gauge
+#HPprobe_success{target="ping_host", module="icmp_ping"} 1
+
+ HELP probe_icmp_rtt_ms Round-trip time for ICMP ping in milliseconds
+ TYPE probe_icmp_rtt_ms gauge
+#VJprobe_icmp_rtt_ms{target="ping_host", module="icmp_ping"} 15.2
+
+ HELP probe_icmp_packets_sent Number of ICMP packets sent
+ TYPE probe_icmp_packets_sent gauge
+#NVprobe_icmp_packets_sent{target="ping_host", module="icmp_ping"} 3
+
+ HELP probe_icmp_packets_received Number of ICMP packets received
+ TYPE probe_icmp_packets_received gauge
+#NXprobe_icmp_packets_received{target="ping_host", module="icmp_ping"} 3
+``
 
 ## 未来规划
 
-### 短期
+### 已实现特性
 
-- [x] 完成 WSS 探测实现
-- [x] 完成 TCP+TLS 探测实现
-- [x] 添加 TLS 握手耗时指标
-- [x] NVS WiFi 凭据持久化
-- [x] AP 模式 Web 配置页面
-- [x] ESP-IDF v6.0 迁移
-- [ ] 优化探测并发
-- [ ] 清理调试日志释放 Flash 空间
+- [x] 模块化探测架构 (modules[] + targets[])
+- [x] SPIFFS JSON 配置系统
+- [x] 配置热加载机制
+- [x] ICMP ping 探测实现
+- [x] 统一 Web 服务器架构
+- [x] 黑盒导出器兼容标签体系
+- [x] /probe 端点实时执行
 
-### 中期
+### 短期规划 (1-2 个月)
 
-- [ ] 探测目标 Web 动态配置
-- [ ] OTA 固件更新
-- [ ] 历史数据本地存储
-- [ ] mDNS 服务发现
+- [ ] 探测结果历史存储和趋势分析
+- [ ] 探测失败智能重试机制
+- [ ] 探测健康评分算法
+- [ ] WebSocket 实时状态推送
+- [ ] 配置文件版本控制和回滚
 
-### 长期
+### 中期规划 (3-6 个月)
 
-- [ ] MQTT 协议支持
-- [ ] 多设备协同
-- [ ] 边缘计算能力
-- [ ] 告警通知 (Webhook / 邮件)
+- [ ] 多设备集群管理
+- [ ] OTA 固件更新支持
+- [ ] 边缘计算集成
+- [ ] 告警规则引擎
+- [ ] 探测任务调度优化
+
+### 长期规划 (6+ 个月)
+
+- [ ] 云端配置同步和管理
+- [ ] 机器学习异常检测
+- [ ] 多协议扩展 (gRPC, QUIC)
+- [ ] 容器化部署支持
+- [ ] 企业级监控解决方案
