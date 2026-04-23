@@ -3,7 +3,6 @@
 
 menu "ESP32 Blackbox Configuration"
 
-    # 配置项：WiFi 配网热点名称
     config ESP_AP_SSID
         string "Config Portal AP SSID"
         default "ESP32_Blackbox"
@@ -11,7 +10,6 @@ menu "ESP32 Blackbox Configuration"
             WiFi 配置门户的接入点名称（SSID）。
             设备启动配网模式时创建的热点的名称。
 
-    # 配置项：WiFi 配网热点密码
     config ESP_AP_PASSWORD
         string "Config Portal AP Password"
         default "12345678"
@@ -19,12 +17,20 @@ menu "ESP32 Blackbox Configuration"
             WiFi 配置门户的接入点密码。
             留空可创建开放网络（无密码）。
 
-    # 配置项：STA 连接最大重试次数
     config ESP_MAXIMUM_RETRY
         int "Maximum STA connection retry"
         default 5
         help
             WiFi 客户端（STA）模式连接失败后的最大重试次数。
             超过最大重试次数后将回退到 AP 配网模式。
+
+    config ESP_BOARD_TEST
+        bool "Run board self-test on startup"
+        default y if IDF_TARGET_ESP32C6
+        default n if IDF_TARGET_ESP32C3
+        help
+            启动时运行硬件自检，验证 NVS、WiFi、DNS、HTTP、TCP 等子系统。
+            ESP32-C6 (Seeed XIAO) 默认启用，用于新板卡验证。
+            ESP32-C3 默认关闭，避免影响正常启动速度。
 
 endmenu
