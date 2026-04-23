@@ -26,6 +26,7 @@ managed_components/
 *.log
 *.tmp
 *.cache
+build_log.txt
 
 # Python
 __pycache__/
@@ -35,3 +36,4 @@ __pycache__/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+.sisyphus

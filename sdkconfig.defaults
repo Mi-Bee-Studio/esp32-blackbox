@@ -1,6 +1,8 @@
-# ESP32 Blackbox Default Configuration
+# ESP32 Blackbox 通用默认配置
+# 目标特定配置请参见 sdkconfig.defaults.esp32c3 / sdkconfig.defaults.esp32c6
+# ESP-IDF 构建系统会自动加载 sdkconfig.defaults.<target> 覆盖通用配置
 
-# WiFi AP (config portal)
+# WiFi AP (配置门户)
 CONFIG_ESP_AP_SSID="ESP32_Blackbox"
 CONFIG_ESP_AP_PASSWORD="12345678"
 CONFIG_ESP_MAXIMUM_RETRY=5
@@ -10,11 +12,6 @@ CONFIG_FREERTOS_HZ=1000
 
 # LWIP
 CONFIG_LWIP_MAX_SOCKETS=16
-
-# mbedTLS
-CONFIG_MBEDTLS_HARDWARE_MPI=y
-CONFIG_MBEDTLS_MPI_USE_INTERRUPT=y
-CONFIG_MBEDTLS_HARDWARE_SHA=y
 
 # HTTP Client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
