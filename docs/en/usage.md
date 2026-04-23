@@ -103,12 +103,25 @@ idf.py -p COM6 flash monitor
 idf.py fullclean
 ```
 
-### Method 3: Windows Batch Script
+### Method 3: Prebuilt Firmware (GitHub Releases)
 
-```cmd
-build_target.bat esp32c6 build          # Build only
-build_target.bat esp32c6 flash COM6     # Build and flash
-build_target.bat esp32c6 clean          # Clean and rebuild
+Firmware binaries are automatically built for both targets on each release.
+
+1. Download from [GitHub Releases](https://github.com/micke/esp32-blackbox/releases)
+2. Flash using esptool:
+
+```bash
+# ESP32-C3
+esptool.py --chip esp32c3 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c3.bin \
+  0x8000 partition-table-esp32c3.bin \
+  0x10000 esp32-blackbox-esp32c3.bin
+
+# ESP32-C6
+esptool.py --chip esp32c6 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c6.bin \
+  0x8000 partition-table-esp32c6.bin \
+  0x10000 esp32-blackbox-esp32c6.bin
 ```
 
 ### Switch Target Chips

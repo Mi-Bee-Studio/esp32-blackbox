@@ -14,7 +14,15 @@ ESP32 network probing device with AP config portal. Monitors endpoint availabili
 
 ## Build Commands
 
-### 方式一：Python 构建脚本（推荐，脱离 ESP-IDF 终端）
+### Prerequisites
+
+1. Install ESP-IDF v6.0: https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c6/get-started/
+2. Set up environment (one of):
+   - Source `export.sh` / `export.bat` (puts `idf.py` in PATH)
+   - Set `IDF_PATH` environment variable
+   - Install to standard location (`~/esp/esp-idf`)
+
+### 方式一：Python 构建脚本（推荐，跨平台）
 
 ```bash
 # ESP32-C6 构建
@@ -30,7 +38,7 @@ python build.py esp32c6 clean
 python build.py esp32c3 monitor COM3
 ```
 
-### 方式二：ESP-IDF 命令行（需先运行 export.bat）
+### 方式二：ESP-IDF 命令行（需先运行 export.bat / source export.sh）
 
 ```bash
 # 首次构建 - 设置目标芯片
@@ -52,13 +60,25 @@ idf.py -p COM3 flash monitor     # Ctrl+] 退出监控
 idf.py fullclean                  # 清理所有构建产物
 ```
 
-### 方式三：Windows 批处理脚本
+### GitHub Releases（预编译固件）
 
-```cmd
-build_target.bat esp32c6 build          # 仅构建
-build_target.bat esp32c6 flash COM3     # 构建并烧录
-build_target.bat esp32c6 clean          # 全量清理后构建
-build_target.bat esp32c3 monitor COM3   # 构建烧录监控
+每次发布版本（tag push `v*`）会自动构建 ESP32-C3 和 ESP32-C6 固件并发布到 GitHub Releases 页面。
+
+下载地址: https://github.com/<user>/esp32-blackbox/releases
+
+烧录命令:
+```bash
+# ESP32-C3
+esptool.py --chip esp32c3 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c3.bin \
+  0x8000 partition-table-esp32c3.bin \
+  0x10000 esp32-blackbox-esp32c3.bin
+
+# ESP32-C6
+esptool.py --chip esp32c6 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c6.bin \
+  0x8000 partition-table-esp32c6.bin \
+  0x10000 esp32-blackbox-esp32c6.bin
 ```
 
 ### 切换目标芯片
@@ -112,7 +132,6 @@ esp32-blackbox/
 ├── sdkconfig.defaults.esp32c3     # ESP32-C3 specific config (flash, crypto)
 ├── partitions.csv                 # Custom partition table (1.875MB app for C6)
 ├── build.py                       # Python build script (cross-target)
-├── build_target.bat               # Windows batch build script
 └── AGENTS.md                      # This file
 ```
 

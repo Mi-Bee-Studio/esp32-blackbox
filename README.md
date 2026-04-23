@@ -1,6 +1,6 @@
 # ESP32 Blackbox
 
-[English](README.md) | **中文**
+[English](README.md) | [中文](README.zh.md)
 
 ## Overview
 
@@ -39,7 +39,9 @@ Detailed steps see [Usage Guide](docs/en/usage.md#initial-ap-mode-setup)
 
 ### 2. Build and Flash
 
-**Method 1: Python Build Script (Recommended)**
+**Method 1: Python Build Script (Recommended, cross-platform)**
+
+Works on both Windows and Linux. No ESP-IDF terminal required.
 
 ```bash
 # ESP32-C6 Build
@@ -52,7 +54,7 @@ python build.py esp32c6 flash COM3
 python build.py esp32c3 monitor COM3
 ```
 
-**Method 2: ESP-IDF Command Line (requires export.bat first)**
+**Method 2: ESP-IDF Command Line (requires export.sh/export.bat first)**
 
 ```bash
 # First build - Set target chip
@@ -74,13 +76,25 @@ idf.py -p COM3 flash monitor     # Ctrl+] to exit monitor
 idf.py fullclean                  # Clean all build artifacts
 ```
 
-**Method 3: Windows Batch Script**
+**Method 3: Prebuilt Firmware (GitHub Releases)**
 
-```cmd
-build_target.bat esp32c6 build          # Build only
-build_target.bat esp32c6 flash COM3     # Build and flash
-build_target.bat esp32c6 clean          # Clean and rebuild
-build_target.bat esp32c3 monitor COM3   # Build, flash and monitor
+Firmware binaries are automatically built for both targets on each release.
+
+1. Download from [GitHub Releases](https://github.com/micke/esp32-blackbox/releases)
+2. Flash using esptool:
+
+```bash
+# ESP32-C3
+esptool.py --chip esp32c3 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c3.bin \
+  0x8000 partition-table-esp32c3.bin \
+  0x10000 esp32-blackbox-esp32c3.bin
+
+# ESP32-C6
+esptool.py --chip esp32c6 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c6.bin \
+  0x8000 partition-table-esp32c6.bin \
+  0x10000 esp32-blackbox-esp32c6.bin
 ```
 
 ### 3. Modify Probe Targets
@@ -164,8 +178,7 @@ esp32-blackbox/
 ├── sdkconfig.defaults.esp32c3  # ESP32-C3 configuration
 ├── sdkconfig.defaults.esp32c6  # ESP32-C6 configuration
 ├── partitions.csv              # Custom partition table (with SPIFFS)
-├── build.py                    # Python build script (recommended)
-├── build_target.bat            # Windows batch build script
+├── build.py                    # Python build script (cross-platform, recommended)
 ├── README.md                   # English README
 ├── README_CN.md                # Chinese README
 └── AGENTS.md                   # Project documentation

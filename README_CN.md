@@ -1,6 +1,6 @@
 # ESP32 Blackbox
 
-[English](README.md) | **中文**
+[English](README.md) | [中文](README.zh.md)
 
 ## 概述
 
@@ -63,13 +63,25 @@ idf.py -p COM3 flash monitor     # Ctrl+] 退出监控
 idf.py fullclean                  # 清理所有构建产物
 ```
 
-### 方式三：Windows 批处理脚本
+### 方式三：预编译固件（GitHub Releases）
 
-```cmd
-build_target.bat esp32c6 build          # 仅构建
-build_target.bat esp32c6 flash COM3     # 构建并烧录
-build_target.bat esp32c6 clean          # 全量清理后构建
-build_target.bat esp32c3 monitor COM3   # 构建烧录监控
+每次发布版本会自动构建固件并发布到 GitHub Releases。
+
+1. 从 [GitHub Releases](https://github.com/micke/esp32-blackbox/releases) 下载固件
+2. 使用 esptool 烧录:
+
+```bash
+# ESP32-C3
+esptool.py --chip esp32c3 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c3.bin \
+  0x8000 partition-table-esp32c3.bin \
+  0x10000 esp32-blackbox-esp32c3.bin
+
+# ESP32-C6
+esptool.py --chip esp32c6 -p COM3 -b 460800 write_flash \
+  0x0 bootloader-esp32c6.bin \
+  0x8000 partition-table-esp32c6.bin \
+  0x10000 esp32-blackbox-esp32c6.bin
 ```
 
 ## 板卡支持
@@ -193,7 +205,6 @@ esp32-blackbox/
 ├── sdkconfig.defaults.esp32c6  # ESP32-C6 特定配置
 ├── partitions.csv           # 自定义分区表
 ├── build.py                # Python 构建脚本
-├── build_target.bat        # Windows 批处理构建脚本
 ├── README.md               # 英文说明文档
 ├── README_CN.md            # 中文说明文档
 └── AGENTS.md               # 项目说明
