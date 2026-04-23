@@ -16,6 +16,8 @@ idf_component_register(
         "config_manager.c"
         "probe_manager.c"
         "board_test.c"
+        "led_strip_encoder.c"
+        "status_led.c"
         "web_server.c"
     # 头文件搜索目录
     INCLUDE_DIRS "."
@@ -34,4 +36,6 @@ idf_component_register(
         freertos              # 实时操作系统
         mbedtls               # TLS/SSL 加密库
         spiffs                # SPIFFS 文件系统
+        esp_driver_gpio        # GPIO 驱动（LED 控制）
+        esp_driver_rmt         # RMT 外设驱动（WS2812 LED）
 )

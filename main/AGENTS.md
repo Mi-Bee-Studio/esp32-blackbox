@@ -22,6 +22,10 @@ Application source. All modules follow the static module pattern with `s_` prefi
 | `web_server.h` | Web server API | ~10 | — |
 | `metrics_server.c` | Prometheus HTTP server (esp_http_server), /metrics, /probe, /config, /reload | ~341 | `metrics_server_start()` |
 | `metrics_server.h` | Metrics server API | ~10 | — |
+| `status_led.c` | LED 状态指示：板载 LED 显示设备状态 | ~401 | `status_led_init()`, `status_led_set_state()` |
+| `status_led.h` | LED 状态 API 和枚举 | ~57 | `status_led_state_t` |
+| `led_strip_encoder.c` | WS2812 RMT 编码器（仅 C6） | ~191 | `led_strip_encoder_new()` |
+| `led_strip_encoder.h` | RMT 编码器头文件 | ~42 | `led_strip_encoder_t` |
 
 ## Dependency Graph
 
@@ -38,6 +42,7 @@ main.c
   │       ├─→ probe_icmp ──→ lwip/raw
   │       └─→ probe_ws ──→ lwip/sockets, mbedtls (ssl, net_sockets)
   └─→ metrics_server ──→ esp_http_server, probe_manager, config_manager
+  └─→ status_led ──→ driver/gpio (C3), driver/rmt_tx + led_strip_encoder (C6), esp_event
 ```
 
 ## Startup Flow
@@ -47,6 +52,7 @@ app_main()
   → nvs_flash_init()
   → esp_event_loop_create_default()
   → config_manager_init() [mounts SPIFFS, loads JSON config]
+  → status_led_init() [LED 状态指示器初始化]
   → wifi_manager_init()
       ├─ NVS has WiFi creds? → STA mode → wait for IP
       │   → board_test (if enabled)
@@ -145,6 +151,8 @@ Defined in `Kconfig.projbuild` under "ESP32 Blackbox Configuration":
 | `ESP_AP_SSID` | string | `ESP32_Blackbox` | AP config portal SSID |
 | `ESP_AP_PASSWORD` | string | `12345678` | AP config portal password |
 | `ESP_MAXIMUM_RETRY` | int | `5` | STA connection retry limit |
+| `ESP_STATUS_LED` | bool | `y` | 启用 LED 状态指示功能 |
+| `ESP_LED_GPIO` | int | `8` (C3) / `15` (C6) | 状态 LED 的 GPIO 引脚号 |
 
 
 ## 即席探测使用教程

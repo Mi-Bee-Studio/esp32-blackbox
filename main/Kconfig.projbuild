@@ -33,4 +33,22 @@ menu "ESP32 Blackbox Configuration"
             ESP32-C6 (Seeed XIAO) 默认启用，用于新板卡验证。
             ESP32-C3 默认关闭，避免影响正常启动速度。
 
+
+    config ESP_STATUS_LED
+        bool "Enable status LED indicator"
+        default y
+        help
+            启用板载 LED 状态指示功能。
+            通过不同的闪烁模式（C3）或颜色+闪烁（C6）显示设备当前状态。
+            禁用后 LED 模块编译为空操作，零开销。
+
+    config ESP_LED_GPIO
+        int "Status LED GPIO number"
+        default 8 if IDF_TARGET_ESP32C3
+        default 15 if IDF_TARGET_ESP32C6
+        depends on ESP_STATUS_LED
+        help
+            状态 LED 的 GPIO 引脚号。
+            ESP32-C3 SuperMini: GPIO8（板载单色 LED，低电平点亮）。
+            ESP32-XIAO ESP32C6: GPIO15（板载 WS2812 RGB LED）。
 endmenu

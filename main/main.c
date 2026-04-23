@@ -34,6 +34,7 @@
 #include "probe_manager.h"
 #include "metrics_server.h"
 #include "board_test.h"
+#include "status_led.h"
 
 static const char *TAG = "MAIN";
 
@@ -79,6 +80,8 @@ void app_main(void)
 
     /* 初始化配置管理器和 WiFi 管理器 */
     config_manager_init();
+    /* 初始化 LED 状态指示器 */
+    status_led_init();
     wifi_manager_init();
 
     /* 检查是否已存储 WiFi 密码 */
@@ -92,6 +95,7 @@ void app_main(void)
             {
                 board_test_result_t test_result = {0};
                 ESP_LOGI(TAG, "Running board self-test...");
+                status_led_set_state(STATUS_LED_SELF_TEST);
                 board_test_run(&test_result);
                 if (test_result.total_fail > 0) {
                     ESP_LOGW(TAG, "Board self-test had %d failures, continuing startup...",
